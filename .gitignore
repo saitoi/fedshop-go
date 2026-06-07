@@ -1,6 +1,12 @@
 .uv-cache/
 .uv-python/
 node_modules/
+.gocache/
+.gomodcache/
+example-implementation/.gocache/
+example-implementation/.gomodcache/
+example-implementation/fedshop-rsa-go
+example-implementation/tmp/
 
 # Local heavyweight reference checkouts. Keep lightweight metadata only.
 reference-repos/FedShop/
