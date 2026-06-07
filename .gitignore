@@ -10,6 +10,7 @@ example-implementation/tmp/
 
 # Local heavyweight reference checkouts. Keep lightweight metadata only.
 reference-repos/FedShop/
+reference-repos/fedshop-forks/
 reference-repos/query-engines/*
 !reference-repos/query-engines/
 !reference-repos/query-engines/README.md
