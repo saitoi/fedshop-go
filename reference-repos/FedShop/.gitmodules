@@ -1,0 +1,45 @@
+[submodule "engines/Odyssey"]
+	path = engines/Odyssey
+	url = https://github.com/Yotlan/Odyssey.git
+[submodule "engines/CostFed"]
+	path = engines/CostFed
+	url = https://github.com/Yotlan/CostFed.git
+[submodule "engines/SPLENDID"]
+	path = engines/SPLENDID
+	url = https://github.com/Yotlan/SPLENDID.git
+	branch = maven
+[submodule "generators/watdiv"]
+	path = generators/watdiv
+	url = https://github.com/mhoangvslev/watdiv.git
+	branch = bsbm
+[submodule "engines/FedX"]
+	path = engines/FedX
+	url = https://github.com/Yotlan/FedX.git
+	branch = master
+[submodule "engines/ANAPSID"]
+	path = engines/ANAPSID
+	url = https://github.com/mhoangvslev/ANAPSID.git
+	branch = master
+[submodule "engines/semagrow/sevod-scraper"]
+	path = engines/semagrow/sevod-scraper
+	url = https://github.com/mhoangvslev/sevod-scraper.git
+	branch = master
+[submodule "engines/semagrow/semagrow"]
+	path = engines/semagrow/semagrow
+	url = https://github.com/Yotlan/semagrow
+	branch = master
+[submodule "fedshop/proxy/FedShop-proxy"]
+	path = fedshop/proxy/FedShop-proxy
+	url = https://github.com/mhoangvslev/FedShop-proxy.git
+	branch = main
+[submodule "engines/MULDER"]
+	path = engines/MULDER
+	url = https://github.com/mhoangvslev/MULDER.git
+	branch = master
+[submodule "engines/fedup"]
+	path = engines/fedup
+	url = https://github.com/mhoangvslev/fedup.git
+	branch = main
+[submodule "generators/lubm-uba"]
+	path = generators/lubm-uba
+	url = https://github.com/rvesse/lubm-uba.git

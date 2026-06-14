@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:experimental
+FROM minhhoangdang/ubuntu2004-dind:amd64
+#FROM minhhoangdang/ubuntu2004-dind:arm64
+ENV DEBIAN_FRONTEND noninteractive
+ENV PATH="/root/miniconda/bin:$PATH"
+
+RUN apt-get update && apt-get install -y git libboost-all-dev openjdk-11-jdk jq \
+    python3-pip python3-wheel python3-dev wbritish wamerican \
+    python-is-python3 build-essential wget curl ruby \
+    && apt-get clean && rm -rf /var/cache/apt/archives /var/lib/apt/lists
+
+# Install Miniconda
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh \
+    && chmod +x miniconda.sh \
+    && ./miniconda.sh -b -p /root/miniconda \
+    && rm miniconda.sh
+
+RUN conda clean -afy && \
+    rm -rf /var/cache/apk/* && \
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r && \
+    conda init bash && \
+    echo "conda activate fedshop" >> /root/.bashrc
+
+WORKDIR /FedShop
+COPY . /FedShop/
+# RUN git clone --recurse-submodule https://github.com/mhoangvslev/FedShop.git /FedShop
+RUN conda env create -f environment.yml
+ENV PATH /root/miniconda/envs/fedshop/bin:$PATH
+#RUN pip install --no-cache Cython && pip install --no-cache git+https://github.com/oddconcepts/n2o.git
+RUN python -m nltk.downloader stopwords punkt wordnet
+
+# Install dependencies
+RUN curl -s https://bitbucket.org/mjensen/mvnvm/raw/master/mvn > /usr/bin/mvn && chmod a+x /usr/bin/mvn
+RUN wget https://github.com/docker/compose/releases/download/v2.22.0/docker-compose-linux-x86_64 -O /usr/bin/docker-compose && chmod a+x /usr/bin/docker-compose
+
+WORKDIR /FedShop/generators/watdiv
+RUN make rebuild && make install
+
+VOLUME /FedShop/experiments /FedShop/engines /FedShop/fedshop
+WORKDIR /FedShop
+ENTRYPOINT [ "dockerd-entrypoint.sh" ]
+CMD []
