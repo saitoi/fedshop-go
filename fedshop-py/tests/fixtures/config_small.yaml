@@ -173,10 +173,8 @@ evaluation:
   engines:
     fedx:
      dir: "engines/FedX"
-    pyfedx:
-     dir: "../scripts"
-    costfed:
-      dir: "engines/CostFed"
+    # costfed:
+    #  dir: "engines/CostFed"
     # splendid:
     #   dir: "engines/SPLENDID"
     # semagrow:

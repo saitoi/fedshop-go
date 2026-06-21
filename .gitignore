@@ -13,3 +13,10 @@ reference-repos/fedshop-forks/
 reference-repos/query-engines/*
 !reference-repos/query-engines/
 !reference-repos/query-engines/README.md
+
+# Editor artifacts
+*.swp
+*.swo
+
+# Runtime logs
+err.log

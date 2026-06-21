@@ -1,0 +1,26 @@
+# Generated dataset and evaluation output — too large for git
+experiments/bsbm/model/
+experiments/bsbm/benchmark/
+experiments/bsbm/stats/
+
+# Sentinel / runtime files
+experiments/bsbm/*.txt
+experiments/bsbm/*.json
+experiments/bsbm/log.txt
+
+# Scratch / temp
+saved.txt
+err.log
+nohup.out
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+.venv/
+
+# Vim swap files
+*.swp

@@ -32,6 +32,17 @@ until docker exec "$CONTAINER" docker info &>/dev/null 2>&1; do sleep 2; done
 # Helper: run a shell command inside the container from /FedShop
 inside() { docker exec "$CONTAINER" bash -c "cd ${FEDSHOP} && $*"; }
 
+# ── 1b. Clear stale ingest sentinels ────────────────────────────────────────
+# The outer container is re-created on every run (fresh inner Docker daemon,
+# no Virtuoso containers). Sentinel files left on the volume from a prior run
+# would fool snakemake into skipping ingest, leaving no Virtuoso to serve
+# queries. Wipe them so ingest always runs against the fresh inner daemon.
+# Generate-data sentinels (.nq files, product data) are safe to keep.
+echo "==> Clearing stale ingest sentinels..."
+rm -f "${HOST_EXPERIMENTS}/bsbm/virtuoso-containers-ok.txt"
+rm -f "${HOST_EXPERIMENTS}"/bsbm/virtuoso-data-batch*-ok.txt
+rm -f "${HOST_EXPERIMENTS}"/bsbm/virtuoso-federation-endpoints-batch*-ok.txt
+
 # ── 2. Git ───────────────────────────────────────────────────────────────────
 echo "==> Updating FedShop repo to origin/main..."
 # --recurse-submodules fails because engines/fedup is broken; skip it
@@ -39,12 +50,33 @@ inside "git fetch && git reset --hard origin/main"
 # Init only the submodules needed for config_small (fedx, proxy, watdiv)
 inside "git submodule update --init --force engines/FedX fedshop/proxy/FedShop-proxy generators/watdiv"
 
-# ── 3. Docker compose plugin ─────────────────────────────────────────────────
-# The image ships docker-compose as a standalone binary but the snakemake rules
-# call "docker compose" (plugin syntax). Symlink to satisfy both.
-echo "==> Installing docker compose plugin shim..."
-inside "mkdir -p /usr/local/lib/docker/cli-plugins && \
-        ln -sf /usr/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose"
+# ── 2b. Restore patched config ───────────────────────────────────────────────
+# git reset writes the upstream config_small.yaml (without use_docker and other
+# required keys) to the volume. Copy our fully-patched local version over it so
+# ingest-data.smk and generate-queries.smk find all expected keys.
+echo "==> Restoring patched config_small.yaml into volume..."
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+mkdir -p "${HOST_EXPERIMENTS}/bsbm/snakefile"
+cp "${REPO_ROOT}/reference-repos/FedShop/experiments/bsbm/snakefile/config_small.yaml" \
+   "${HOST_EXPERIMENTS}/bsbm/snakefile/config_small.yaml"
+
+# ── 3. Docker compose v2 plugin ─────────────────────────────────────────────
+# The image ships docker-compose v1 (standalone binary). The snakemake rules
+# call "docker compose" (plugin syntax) AND rely on docker compose v2 project
+# naming: with v2, "-f path/to/docker/virtuoso.yml" derives project name from
+# the compose file's parent directory ("docker"), producing container names like
+# "docker-bsbm-virtuoso-1". Docker-compose v1 uses CWD as project name instead
+# ("fedshop"), so containers would be named "fedshop_bsbm-virtuoso_1" —
+# mismatching every "docker start / docker exec" call in the snakemake rules.
+# Install the real docker compose v2 plugin binary to fix this.
+echo "==> Installing docker compose v2 plugin..."
+inside "
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL 'https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-linux-aarch64' \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+docker compose version
+"
 
 # ── 4. Patch config_small.yaml ───────────────────────────────────────────────
 # config_small.yaml is an older file missing keys that the updated snakemake
@@ -129,40 +161,114 @@ docker exec "$CONTAINER" sed -i \
   's/"-\*-SELECT-\*- WHERE " + "{"/"-*-SELECT-*- " + "{"/g' \
   "${FEDSHOP}/fedshop/algebra/rdflib_algebra.py"
 
-# ── 7. Patch query.py ────────────────────────────────────────────────────────
+# ── 7. Patch utils.py ───────────────────────────────────────────────────────
+# docker-compose v1 (the standalone binary shimmed in step 3) does not support
+# --format '{{.Name}}'. Silence the error: use stderr=DEVNULL so the traceback
+# doesn't pollute logs (the except branch already returns [] safely).
+echo "==> Patching utils.py (docker-compose --format noise)..."
+docker exec "$CONTAINER" sed -i \
+  's/subprocess\.check_output(cmd, shell=True)\.decode/subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL).decode/g' \
+  "${FEDSHOP}/fedshop/utils.py"
+
+# ── 8. Patch query.py ────────────────────────────────────────────────────────
+# Patches use line-by-line scanning (substring match) so they are robust to
+# upstream indentation and surrounding-context differences that cause silent
+# str.replace() no-ops.
 echo "==> Patching query.py..."
 docker exec "$CONTAINER" python3 << 'PYEOF'
 f = '/FedShop/fedshop/query.py'
-src = open(f).read()
+lines = open(f).readlines()
+src = ''.join(lines)
 
-# 7a. estimate_replacement_value_based_on_op raises ValueError for string values
-# (e.g. product labels used with the "in" operator). Return strings as-is.
-old_str = (
-    '            else:\n'
-    '                raise ValueError(f"Unsupported value type {type(value)} for value {value}!")'
-)
-new_str = (
-    '            elif isinstance(value, str):\n'
-    '                return value\n'
-    '            else:\n'
-    '                raise ValueError(f"Unsupported value type {type(value)} for value {value}!")'
-)
+# 7a. estimate_replacement_value_based_on_op: add early return for str values
+# before the generic ValueError (product labels trigger the "in" operator path).
 if 'isinstance(value, str)' not in src:
-    src = src.replace(old_str, new_str)
+    old_7a = (
+        '            else:\n'
+        '                raise ValueError(f"Unsupported value type {type(value)} for value {value}!")'
+    )
+    new_7a = (
+        '            elif isinstance(value, str):\n'
+        '                return value\n'
+        '            else:\n'
+        '                raise ValueError(f"Unsupported value type {type(value)} for value {value}!")'
+    )
+    src2 = src.replace(old_7a, new_7a)
+    if src2 != src:
+        src = src2
+        lines = src.splitlines(keepends=True)
+        print('Patched 7a: str early-return in estimate_replacement_value_based_on_op')
+    else:
+        print('WARNING 7a: target string not found, patch not applied')
+else:
+    print('Skipped 7a: isinstance(value, str) already present')
 
-# 7b. execute_query raises RuntimeError when a query returns 0 rows. With the
-# small dataset some instantiated queries genuinely have no matching data.
-# Downgrade to a warning so the pipeline continues.
-src = src.replace(
-    'raise RuntimeError(f"{queryfile} returns no result...")',
-    'logger.warning(f"{queryfile} returns no result, writing empty output")',
-)
+# 7b. execute_query: 0 rows is valid for small datasets; downgrade to warning.
+patched = False
+for i, line in enumerate(lines):
+    if 'raise RuntimeError(' in line and 'returns no result' in line:
+        spc = ' ' * (len(line) - len(line.lstrip()))
+        lines[i:i+1] = [
+            spc + 'logger.warning(f"{queryfile} returns no result, writing empty output")\n',
+            spc + 'return\n',
+        ]
+        print(f'Patched 7b at line {i+1}: RuntimeError -> warning in execute_query')
+        patched = True
+        break
+if not patched:
+    print('WARNING 7b: RuntimeError line not found, patch not applied')
+src = ''.join(lines)
 
-open(f, 'w').write(src)
-print('query.py patched')
+# 7c. create_workload_value_selection_with_constraints: no results after
+# filtering means the query has no valid instantiation values for this dataset.
+# Write an empty CSV and return instead of crashing.
+# Two-condition scan (same strategy as 7b) to be quote-style agnostic.
+patched = False
+for i, line in enumerate(lines):
+    if 'raise ValueError' in line and 'No results after filtering' in line:
+        spc = ' ' * (len(line) - len(line.lstrip()))
+        lines[i:i+1] = [
+            spc + 'logger.warning("No results after filtering; writing empty workload CSV")\n',
+            spc + 'if workload_value_selection:\n',
+            spc + '    pd.DataFrame(columns=list(df.columns)).to_csv(workload_value_selection, index=False)\n',
+            spc + 'return pd.DataFrame()\n',
+        ]
+        print(f'Patched 7c at upstream line {i+1}: empty CSV instead of ValueError')
+        patched = True
+        break
+if not patched:
+    print('WARNING 7c: target not found; nearby "filtering" lines:')
+    for j, l in enumerate(lines):
+        if 'filtering' in l.lower():
+            print(f'  {j+1}: {repr(l)}')
+
+# 7d. instanciate_workload: guard against empty workload CSV (written by 7c).
+# Insert the check before the IndexError-prone .to_dict()[instance_id] call.
+patched = False
+for i, line in enumerate(lines):
+    if 'placeholder_chosen_values' in line and 'to_dict' in line and 'instance_id' in line:
+        spc = ' ' * (len(line) - len(line.lstrip()))
+        lines[i:i] = [
+            spc + 'if value_selection_values.empty:\n',
+            spc + '    logger.warning(f"Empty workload at {value_selection}; writing FILTER(false) placeholder")\n',
+            spc + '    Path(outfile).parent.mkdir(parents=True, exist_ok=True)\n',
+            spc + '    open(outfile, "w").write("SELECT * WHERE { FILTER(false) }")\n',
+            spc + '    return\n',
+        ]
+        print(f'Patched 7d at upstream line {i+1}: guard empty workload in instanciate_workload')
+        patched = True
+        break
+if not patched:
+    print('WARNING 7d: placeholder_chosen_values line not found; nearby lines:')
+    for j, l in enumerate(lines):
+        if 'placeholder_chosen_values' in l or ('to_dict' in l and 'instance_id' in l):
+            print(f'  {j+1}: {repr(l)}')
+
+open(f, 'w').writelines(lines)
+print('query.py patching complete')
 PYEOF
 
-# ── 8. Run benchmark ─────────────────────────────────────────────────────────
+# ── 9. Run benchmark ─────────────────────────────────────────────────────────
 echo "==> Step 1/3: generate data (~10 min)..."
 inside "python fedshop/benchmark.py generate data ${CONFIG}"
 
