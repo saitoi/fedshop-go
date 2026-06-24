@@ -26,6 +26,33 @@ Esses sao os motores de consultas que apresentei:
 
 ---------------------------------
 
+RSA
+
+O RSA -- Resource Source Assignment -- eh um mapeamento que associa cada padrao de tripla aos endpoints que realmente possuem dados.
+
+Funcionamento:
+
+1. Constroi consulta service com todos os membros da federacao F(N) -- Consulta exaustiva
+
+2. Transforma consulta em uma consulta de proveniencia com a clausula graph
+
+3. Consulta de proveniencia eh executada sobre a uniao dos dados da federacao
+
+4. Resultado:
+
+tp1 -> ep1, ep2, ep3
+tp2 -> ep1, ep3
+...
+
+
+---------------------------------
+
+Metricas
+
+
+
+---------------------------------
+
   Input
 
   > Aqui entram os arquivos que o motor recebe do benchmark: a query SPARQL já instanciada, o config_batchN.ttl com os endpoints da federação, e opcionalmente um summary.json com estatísticas pré-computadas dos endpoints.
