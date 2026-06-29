@@ -1,0 +1,325 @@
+Boa tarde a todos, so relembrando a proposta do meu trabalho:
+
+    Desenvolver um motor de consultas federado para ambientes distribuidos
+    com foco na execucao de consultas federadas em sparql
+
+Esses sao os motores de consultas que apresentei:
+
+- FedX foi a implementacao que serviu de base pra varias engines federadas.
+
+    - Introduziu selecao de fontes sem metadados previamente computados;
+    - Fontes podem ser grupos exclusivos ou usadas em bound_joins;
+    - Introduz outras estrategias como reordenacao no join pra reduzir o volume;
+
+- Tem esses outros motores de consulta mais complexos (Semagrow, CostFed, ANAPSID)
+
+    - que usam justamente metadados pre-computados;
+    - ou que estimam a cardinalidade do endpoint SPARQL e traduzem isso no custo;
+    - ou ate que adaptam o plano de consulta dinamicamente de acordo com a lentidao dos endpoints;
+
+- O pyfedx seria um prototipo de validacao, eu desenvolvi ele antes de comecar a implementacao final para ter uma ideia do trabalho que teria.
+
+    - Ele tem algumas simplificacoes tipo:
+
+        - so faz joins locais
+        - 
+
+---------------------------------
+
+RSA
+
+O RSA -- Resource Source Assignment -- eh um mapeamento que associa cada padrao de tripla aos endpoints que realmente possuem dados.
+
+Funcionamento:
+
+1. Constroi consulta service com todos os membros da federacao F(N) -- Consulta exaustiva
+
+2. Transforma consulta em uma consulta de proveniencia com a clausula graph
+
+3. Consulta de proveniencia eh executada sobre a uniao dos dados da federacao
+
+4. Resultado:
+
+tp1 -> ep1, ep2, ep3
+tp2 -> ep1, ep3
+...
+
+
+---------------------------------
+
+Metricas
+
+
+
+---------------------------------
+
+  Input
+
+  > Aqui entram os arquivos que o motor recebe do benchmark: a query SPARQL já instanciada, o config_batchN.ttl com os endpoints da federação, e opcionalmente um summary.json com estatísticas pré-computadas dos endpoints.
+
+  Parse + Config
+
+  > Primeiro o fedshop-go faz o parse da query e transforma o SPARQL em uma estrutura interna simples: triples, filtros, OPTIONAL, UNION, projeção e ordenação. Ao mesmo tempo, ele lê o config_batchN.ttl para descobrir quais endpoints existem nesse batch.
+
+  Source Selection
+
+  > Depois vem a seleção de fontes. Para cada triple pattern da query, o motor decide quais endpoints podem responder. Ele pode fazer isso de três formas: broadcast, mandando para todos; ASK, perguntando a cada endpoint; ou summary, usando metadados para eliminar endpoints que não têm o predicado.
+
+  Metadata
+
+  > Este bloco é opcional. Quando usamos summary, o motor já tem um resumo por endpoint com contagens de predicados. Isso ajuda em duas coisas: podar fontes durante a source selection e dar uma estimativa de custo para o planner.
+
+  Planner
+
+  > Com as fontes escolhidas, o planner decide a ordem de execução dos triple patterns. A estratégia simples é source-count: executar primeiro os triples que têm menos fontes candidatas. A estratégia com metadados é cost: priorizar predicados menos frequentes. O resultado é um triple_order.
+
+  Executor
+
+  > O executor recebe a ordem dos triples e as fontes selecionadas. Ele executa os BGPs nessa ordem, junta os bindings, aplica filtros assim que possível, trata OPTIONAL com left join e executa os braços de UNION. É aqui que a query realmente vira linhas de resultado.
+
+  Remote Fetch
+
+  > Quando o executor precisa buscar dados, ele chama o bloco de remote fetch. Esse bloco monta consultas SPARQL remotas. Dependendo do modo, ele pode mandar um SELECT simples ou usar VALUES para enviar bindings intermediários, parecido com um bound join. Ele também controla concorrência e política de falha estrita ou parcial.
+
+  HTTP SPARQL Client
+
+  > O client HTTP é a camada mais baixa de comunicação. Ele envia POST para os endpoints SPARQL, aplica retry e backoff em falhas transitórias, e conta número de requests e bytes transferidos. Essas métricas depois entram no stats.json.
+
+  SPARQL Endpoints
+
+  > Aqui estão os membros reais da federação. Cada endpoint representa uma fonte do batch, por exemplo vendors e rating sites no FedShop. O motor consulta só os endpoints que passaram pela source selection.
+
+  Bindings Voltando
+
+  > As respostas dos endpoints voltam como bindings SPARQL. O executor recebe esses bindings, junta com os resultados intermediários e continua processando a query até terminar.
+
+  FedShop Artifacts
+
+  > No final, o motor escreve os arquivos que o FedShop espera: results.csv com os resultados, source_selection.csv com as fontes escolhidas por triple, query_plan.txt com o plano, e stats.json com tempos, requests, bytes e configurações usadas.
+
+  Fechamento
+
+  > Então, o fluxo principal é: parsear a query, escolher fontes, ordenar os triples, buscar dados nos endpoints, juntar os resultados e gerar artefatos compatíveis com o FedShop. A vantagem é que cada decisão fica separada e mensurável: source selection, planejamento e execução.
+
+--------------------------------------
+
+  Query De Entrada
+
+  SELECT ?product ?label WHERE {
+    ?product rdf:type ?type .
+    ?product rdfs:label ?label .
+    ?product bsbm:productFeature ?feature .
+  }
+
+  Endpoints De Entrada
+
+  endpoint_1 = vendor0
+  endpoint_2 = vendor1
+  endpoint_3 = ratingsite0
+
+  Parse + Config
+
+  Entrada:
+
+  query.sparql
+  config_batch0.ttl
+
+  Saída interna:
+
+  tp0 = ?product rdf:type ?type
+  tp1 = ?product rdfs:label ?label
+  tp2 = ?product bsbm:productFeature ?feature
+
+  Source Selection
+
+  Entrada:
+
+  tp0, tp1, tp2
+  endpoints = [vendor0, vendor1, ratingsite0]
+
+  Saída: source_map
+
+  tp0 -> [vendor0, vendor1]
+  tp1 -> [vendor0]
+  tp2 -> [vendor0, vendor1]
+
+  Interpretação:
+
+  tp1 é exclusivo de vendor0
+  tp0 e tp2 podem vir de vendor0 ou vendor1
+  ratingsite0 não foi selecionado para nenhum triple
+
+  Metadata
+
+  Entrada opcional:
+
+  {
+    "vendor0": {
+      "rdf:type": 1000,
+      "rdfs:label": 1000,
+      "bsbm:productFeature": 3000
+    },
+    "vendor1": {
+      "rdf:type": 500,
+      "bsbm:productFeature": 1200
+    }
+  }
+
+  Saída usada pelo planner:
+
+  custo(tp0) = 1000 + 500 = 1500
+  custo(tp1) = 1000
+  custo(tp2) = 3000 + 1200 = 4200
+
+  Planner
+
+  Entrada:
+
+  source_map
+  custos por predicado
+
+  Saída: triple_order
+
+  [tp1, tp0, tp2]
+
+  Por quê?
+
+  tp1 tem só 1 fonte
+  tp0 tem 2 fontes, custo menor
+  tp2 tem 2 fontes, custo maior
+
+  Executor
+
+  Entrada:
+
+  triple_order = [tp1, tp0, tp2]
+  source_map
+
+  Passo 1:
+
+  executa tp1 em vendor0
+
+  Resultado parcial:
+
+  { product: vendor0/Product1, label: "Phone" }
+  { product: vendor0/Product2, label: "Camera" }
+
+  Passo 2:
+
+  executa tp0 usando ?product já conhecido
+
+  Com bound join, ele pode mandar:
+
+  VALUES (?product) {
+    (<http://vendor0/Product1>)
+    (<http://vendor0/Product2>)
+  }
+  ?product rdf:type ?type .
+
+  Resultado parcial após join:
+
+  { product: vendor0/Product1, label: "Phone", type: ProductType1 }
+  { product: vendor0/Product2, label: "Camera", type: ProductType2 }
+
+  Passo 3:
+
+  executa tp2 usando os produtos já conhecidos
+
+  Resultado final interno:
+
+  { product: vendor0/Product1, label: "Phone", type: ProductType1, feature: FeatureA }
+  { product: vendor0/Product2, label: "Camera", type: ProductType2, feature: FeatureB }
+
+  HTTP SPARQL Client
+
+  Entrada:
+
+  endpoint = vendor0
+  query = SELECT * WHERE { ... }
+
+  Saída:
+
+  {
+    "results": {
+      "bindings": [
+        {
+          "product": {
+            "type": "uri",
+            "value": "http://vendor0/Product1"
+          },
+          "label": {
+            "type": "literal",
+            "value": "Phone"
+          }
+        }
+      ]
+    }
+  }
+
+  Transforma para binding interno:
+
+  { product: IRI("http://vendor0/Product1"), label: Literal("Phone") }
+
+  Artifacts De Saída
+
+  results.csv:
+
+  product,label
+  http://vendor0/Product1,Phone
+  http://vendor0/Product2,Camera
+
+  source_selection.csv:
+
+  triple,source_selection
+  "?product rdf:type ?type","[""vendor0"",""vendor1""]"
+  "?product rdfs:label ?label","[""vendor0""]"
+  "?product bsbm:productFeature ?feature","[""vendor0"",""vendor1""]"
+
+  query_plan.txt:
+
+  fedshop-go plan
+  selector=ask
+  planner=cost
+  join=bind
+  triple_order=[tp1,tp0,tp2]
+
+  tp0: StatementSourcePattern: ?product rdf:type ?type
+    sources: vendor0, vendor1
+  tp1: ExclusiveStatement: ?product rdfs:label ?label
+    sources: vendor0
+  tp2: StatementSourcePattern: ?product bsbm:productFeature ?feature
+    sources: vendor0, vendor1
+
+  stats.json:
+
+  {
+    "engine": "fedshop-go",
+    "rows": 2,
+    "selector": "ask",
+    "join": "bind",
+    "planner": "cost",
+    "ask": 9,
+    "cache_hits": 0,
+    "http_requests": 4,
+    "data_transfer": 1840,
+    "triple_order": [1, 0, 2],
+    "partial": false
+  }
+
+  Frase para explicar:
+
+  > O source_map diz onde cada triple pode ser executado. O triple_order diz em que ordem executar. O executor usa os dois para buscar bindings nos endpoints, fazer joins e produzir os artefatos finais do
+  > FedShop.
+
+---------------------------------------------
+
+O que o fedx tem que o pyfedx nao tem?
+
+- parser completo de lib externa (RDF4J)
+
+- estrategia de otimizacao algebrica como exclusive group
+
+- estrategias de concorrencia
+
+- bound joins
+

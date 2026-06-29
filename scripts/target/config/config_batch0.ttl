@@ -1,0 +1,124 @@
+
+@prefix sd: <http://www.w3.org/ns/sparql-service-description#> .
+@prefix fedx: <http://rdf4j.org/config/federation#> .
+
+
+<http://www.vendor0.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor0.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.vendor1.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor1.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.vendor2.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor2.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.vendor3.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor3.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.vendor4.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor4.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.vendor5.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor5.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.vendor6.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor6.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.vendor7.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor7.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.vendor8.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor8.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.vendor9.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor9.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.ratingsite0.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite0.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.ratingsite1.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite1.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.ratingsite2.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite2.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.ratingsite3.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite3.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.ratingsite4.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite4.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.ratingsite5.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite5.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.ratingsite6.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite6.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.ratingsite7.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite7.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.ratingsite8.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite8.fr%2F";
+    fedx:supportsASKQueries true .
+
+
+<http://www.ratingsite9.fr/> a sd:Service ;
+    fedx:store "SPARQLEndpoint";
+    sd:endpoint "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite9.fr%2F";
+    fedx:supportsASKQueries true .
+
