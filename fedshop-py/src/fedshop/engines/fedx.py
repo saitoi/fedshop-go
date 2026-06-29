@@ -143,19 +143,20 @@ class FedXAdapter(EngineAdapter):
             str(noexec).lower(),
         ])
 
+        # Run with java -cp to avoid Maven overhead (saves ~200MB vs mvn exec:java)
         # Patch 1: http.nonProxyHosts excludes local addresses
-        # Patch 2: http.keepAlive=false avoids stale-connection errors when running
-        #          multiple batches (Apache HttpClient reuses connections that Virtuoso
-        #          has closed between batches, triggering NoHttpResponseException)
+        # Patch 2: http.keepAlive=false avoids stale-connection errors between batches
+        cp = "target/FedX-1.0-SNAPSHOT.jar:target/lib/*"
         timeout_cmd = f"timeout --signal=SIGKILL {timeout}" if timeout != 0 else ""
         cmd = (
-            f'{timeout_cmd} mvn exec:java '
+            f'{timeout_cmd} java '
+            f'-Xmx2g '
             f'-Dhttp.proxyHost="{proxy_host}" '
             f'-Dhttp.proxyPort="{proxy_port}" '
             f'-Dhttp.nonProxyHosts="host.docker.internal|localhost|127.0.0.1" '
             f'-Dhttp.keepAlive=false '
-            f'-Dexec.mainClass="org.example.FedX" '
-            f'-Dexec.args="{args}"'
+            f'-cp "{cp}" '
+            f'org.example.FedX {args}'
         ).strip()
 
         old_cwd = os.getcwd()
@@ -205,6 +206,9 @@ class FedXAdapter(EngineAdapter):
             "attempt": m.group(5),
         }
         for metric in ["exec_time", "source_selection_time", "planning_time", "ask", "http_req", "data_transfer"]:
+            if metric == "exec_time" and failed_reason is not None:
+                row[metric] = failed_reason
+                continue
             metric_file = base / f"{metric}.txt"
             if metric_file.exists():
                 try:

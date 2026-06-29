@@ -1,0 +1,136 @@
+#namespace	bsbm=http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/
+#namespace	rdfs=http://www.w3.org/2000/01/rdf-schema#
+#namespace	rdf=http://www.w3.org/1999/02/22-rdf-syntax-ns#
+#namespace	dc=http://purl.org/dc/elements/1.1/
+#namespace  __provenance=http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/
+#namespace  __output_org=fragmented
+#namespace  __output_dir=/Users/pedrosaito/fedshop-new-engine/fedshop-py/config/../data/tmp/product
+#namespace  __replicated=true
+
+// ===== ENTITIES & LITERAL PROPERTIES ===== //
+
+// ----- Producer ----- //
+<type> bsbm:Producer 250
+
+<pgroup> 1.0
+#predicate rdfs:label string2
+</pgroup>
+
+<pgroup> 1.0
+#predicate rdfs:comment string35
+</pgroup>
+
+<pgroup> 1.0
+#predicate bsbm:country country
+</pgroup>
+
+<pgroup> 1.0
+#predicate bsbm:publishDate date 2000-07-20 2005-06-23
+</pgroup>
+
+</type>
+
+// ----- Product ----- //
+
+<type> bsbm:Product 20000
+
+<pgroup> 1.0
+#predicate rdfs:label string2
+</pgroup>
+
+<pgroup> 1.0
+#predicate rdfs:comment string100
+</pgroup>
+
+<pgroup> 1.0
+#predicate bsbm:productPropertyTextual1 string9
+</pgroup>
+
+<pgroup> 1.0
+#predicate bsbm:productPropertyTextual2 string9
+</pgroup>
+
+<pgroup> 1.0
+#predicate bsbm:productPropertyTextual3 string9
+</pgroup>
+
+<pgroup> 0.7
+#predicate bsbm:productPropertyTextual4 string9
+</pgroup>
+
+<pgroup> 0.8
+#predicate bsbm:productPropertyTextual5 string9
+</pgroup>
+
+<pgroup> 1.0
+#predicate bsbm:productPropertyNumeric1 integer 1 2000 normal
+</pgroup>
+
+<pgroup> 1.0
+#predicate bsbm:productPropertyNumeric2 integer 1 2000 normal
+</pgroup>
+</type>
+
+<pgroup> 1.0
+#predicate bsbm:productPropertyNumeric3 integer 1 2000 normal
+</pgroup>
+</type>
+
+<pgroup> 0.7
+#predicate bsbm:productPropertyNumeric4 integer 1 2000 normal
+</pgroup>
+
+<pgroup> 0.8
+#predicate bsbm:productPropertyNumeric5 integer 1 2000 normal
+</pgroup>
+
+<pgroup> 1.0
+#predicate bsbm:publishDate date 2000-09-20 2006-12-23
+</pgroup>
+
+</type>
+
+// ----- ProductFeature ----- //
+<type> bsbm:ProductFeature 150
+
+<pgroup> 1.0
+#predicate rdfs:label string2
+</pgroup>
+
+<pgroup> 1.0
+#predicate rdfs:comment string35
+</pgroup>
+
+<pgroup> 1.0
+#predicate bsbm:publishDate date 2000-05-20 2000-06-23
+</pgroup>
+
+</type>
+
+// ----- ProductType ----- //
+<type> bsbm:ProductType 150
+
+<pgroup> 1.0
+#predicate rdfs:label string2
+</pgroup>
+
+<pgroup> 1.0
+#predicate rdfs:comment string35
+</pgroup>
+
+<pgroup> 1.0
+#predicate bsbm:publishDate date 2000-05-20 2000-06-23
+</pgroup>
+
+</type>
+
+// Every products have serveral product type than others
+#association bsbm:Product rdf:type bsbm:ProductType 2 9 1.0 NORMAL
+
+// Every products have serveral product features
+#association bsbm:Product bsbm:productFeature bsbm:ProductFeature 2 9 1.0 NORMAL
+
+// Every product has a producer
+#association bsbm:Product bsbm:producer bsbm:Producer 2 1 1.0 NORMAL
+
+

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 
 from .config import BenchmarkConfig
+from .watdiv import run as watdiv_run
 
 
 def generate_source(
@@ -16,7 +16,7 @@ def generate_source(
 ) -> Path:
     """Fill WatDiv template placeholders for one federation member and run WatDiv.
 
-    Returns path to the generated .nq file (written by WatDiv to stdout → output_file).
+    Returns the path to the generated .nq file.
     """
     gen = config.generation
     schema = gen.schema[section]
@@ -42,12 +42,9 @@ def generate_source(
     model_file.write_text(model_text)
 
     scale_factor = int(schema.scale_factor)
-    cmd = f"{gen.generator.exec} -d {model_file} {scale_factor}"
-
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.run(cmd, shell=True, stdout=output_file.open("wb"), check=False)
-    if proc.returncode != 0:
-        raise RuntimeError(f"WatDiv failed for {source_name} (exit {proc.returncode})")
+    with output_file.open("w") as output:
+        watdiv_run(model_text, scale_factor, output)
 
     return output_file
 
@@ -76,12 +73,7 @@ def generate_products(config: BenchmarkConfig, output_dir: Path) -> Path:
     model_file.write_text(template)
 
     scale_factor = int(schema.scale_factor)
-    exec_abs = Path(gen.generator.exec).resolve()
-    cmd = f"{exec_abs} -d {model_file.resolve()} {scale_factor}"
-
-    proc = subprocess.run(cmd, shell=True, check=False)
-    if proc.returncode != 0:
-        raise RuntimeError(f"WatDiv failed for products (exit {proc.returncode})")
+    watdiv_run(template, scale_factor, output_dir)
 
     return output_dir
 

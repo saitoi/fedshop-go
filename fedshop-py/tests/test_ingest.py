@@ -2,9 +2,8 @@
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from urllib.parse import parse_qs, urlparse
+from unittest.mock import MagicMock, patch
 
 
 def test_run_isql_without_docker_uses_bare_binary():
@@ -72,9 +71,12 @@ def test_load_nq_file_calls_ld_dir_and_rdf_loader_run():
         )
 
     statements = " ".join(calls_made)
+    assert "SPARQL CLEAR GRAPH <http://www.vendor0.fr/>" in statements
+    assert "DELETE FROM DB.DBA.LOAD_LIST" in statements
     assert "ld_dir" in statements
     assert "rdf_loader_run" in statements
     assert "checkpoint" in statements
+    assert statements.index("CLEAR GRAPH") < statements.index("ld_dir")
 
 
 def test_ingest_batch_writes_proxy_mapping_json(config_small, tmp_path):
@@ -94,10 +96,16 @@ def test_ingest_batch_writes_proxy_mapping_json(config_small, tmp_path):
     assert mapping_file.exists()
     mapping = json.loads(mapping_file.read_text())
     assert len(mapping) == 20  # batch0 has 20 federation members
+    assert len(set(mapping.values())) == 20
+    for member_iri, endpoint in mapping.items():
+        parsed = urlparse(endpoint)
+        assert parsed.hostname == "host.docker.internal"
+        assert parsed.path == "/sparql"
+        assert parse_qs(parsed.query) == {"default-graph-uri": [member_iri]}
 
 
-def test_register_sparql_endpoint_builds_correct_endpoint_url():
-    """register_sparql_endpoint should return http://localhost:PORT/LPATH."""
+def test_register_sparql_endpoint_scopes_url_to_member_graph():
+    """Each endpoint URL must select exactly one named graph."""
     from fedshop.ingest import register_sparql_endpoint
 
     calls_made = []
@@ -114,7 +122,9 @@ def test_register_sparql_endpoint_builds_correct_endpoint_url():
             vport=8890,
         )
 
-    assert url == "http://localhost:8890/vendor0/sparql"
-    stmts = " ".join(calls_made)
-    assert "SYS_SPARQL_HOST" in stmts
-    assert "vendor0" in stmts
+    parsed = urlparse(url)
+    assert parsed.path == "/sparql"
+    assert parse_qs(parsed.query) == {
+        "default-graph-uri": ["http://www.vendor0.fr/"]
+    }
+    assert calls_made == []

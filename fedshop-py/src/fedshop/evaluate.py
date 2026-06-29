@@ -78,14 +78,30 @@ def run_evaluation(
 
     Returns path to the stats.csv file written.
     """
+    from .engines.anapsid import AnapsidAdapter
     from .engines.costfed import CostFedAdapter
+    from .engines.fedshop_go import FedShopGoAdapter
     from .engines.fedx import FedXAdapter
     from .engines.pyfedx import PyFedXAdapter
+    from .engines.rsa import RsaAdapter
+    from .engines.semagrow import SemagrowAdapter
+    from .engines.splendid import SplendidAdapter
 
-    engine_adapters = {"fedx": FedXAdapter, "pyfedx": PyFedXAdapter, "costfed": CostFedAdapter}
+    engine_adapters = {
+        "fedx": FedXAdapter,
+        "pyfedx": PyFedXAdapter,
+        "costfed": CostFedAdapter,
+        "fedshop-go": FedShopGoAdapter,
+        "anapsid": AnapsidAdapter,
+        "semagrow": SemagrowAdapter,
+        "splendid": SplendidAdapter,
+        "rsa": RsaAdapter,
+    }
 
     if engine_name not in engine_adapters:
-        raise ValueError(f"Unknown engine: {engine_name}")
+        import warnings
+        warnings.warn(f"No adapter for engine '{engine_name}', skipping. Known: {list(engine_adapters)}")
+        return Path("/dev/null")
 
     adapter_cls = engine_adapters[engine_name]
     adapter = adapter_cls(config)
@@ -99,6 +115,18 @@ def run_evaluation(
     query_plan_txt = out_dir / "query_plan.txt"
     results_csv = out_dir / "results.csv"
     provenance_csv = out_dir / "provenance.csv"
+
+    # Every attempt owns a complete artifact set.  Truncate it up front so a
+    # timeout, runtime failure, or skipped query cannot expose files from an
+    # older run under the current attempt path.
+    for artifact in (
+        results_txt,
+        source_sel_txt,
+        query_plan_txt,
+        results_csv,
+        provenance_csv,
+    ):
+        artifact.write_text("")
 
     if batch_id > 0:
         prev_results = (
@@ -116,6 +144,12 @@ def run_evaluation(
 
     query_path = bench_dir / "generation" / query_name / f"instance_{instance_id}" / "injected.sparql"
     composition_file = bench_dir / "generation" / query_name / f"instance_{instance_id}" / "composition.json"
+
+    if not query_path.exists():
+        import warnings
+        warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+        _write_stats_failure(stats_path, engine_name, query_name, instance_id, batch_id, attempt, "no_query")
+        return stats_path
 
     workdir = Path(config.generation.workdir)
     proxy_mapping_file = workdir / f"virtuoso-proxy-mapping-batch{batch_id}.json"

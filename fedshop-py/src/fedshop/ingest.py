@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from urllib.parse import urlencode
 
 from .config import BenchmarkConfig
 
@@ -44,6 +45,12 @@ def load_nq_file(
 ) -> None:
     """Bulk-load a single .nq file into Virtuoso under the given graph URI."""
     filename = nq_file.name
+    run_isql(f"SPARQL CLEAR GRAPH <{graph_uri}>;", isql_path, container_name)
+    run_isql(
+        f"DELETE FROM DB.DBA.LOAD_LIST WHERE LL_FILE = '{filename}' OR LL_FILE LIKE '%/{filename}';",
+        isql_path,
+        container_name,
+    )
     run_isql(f"ld_dir('{container_data_path}', '{filename}', '{graph_uri}');", isql_path, container_name)
     run_isql("rdf_loader_run(log_enable=>2);", isql_path, container_name)
     run_isql("checkpoint;", isql_path, container_name)
@@ -62,33 +69,8 @@ def register_sparql_endpoint(
     Returns the endpoint URL that was registered.
     """
     resolved_vhost = "localhost" if vhost == "*ini*" else vhost
-    resolved_port = str(vport)
-    lhost = f":{vport}"
-
-    # Remove any existing virtual host entry for this path
-    run_isql(
-        f"DB.DBA.VHOST_REMOVE(vhost=>'{vhost}', lhost=>'{lhost}', lpath=>'{lpath}');",
-        isql_path,
-        container_name,
-    )
-
-    # Define the virtual host
-    run_isql(
-        f"DB.DBA.VHOST_DEFINE(vhost=>'{vhost}', lhost=>'{lhost}', lpath=>'{lpath}', "
-        f"ppath=>'/!sparql/', is_dav=>1, vsp_user=>'dba',"
-        f"opts=>vector('browse_sheet', '', 'noinherit', 'yes'));",
-        isql_path,
-        container_name,
-    )
-
-    sh_host = f"{resolved_vhost}:{resolved_port}"
-    run_isql(
-        f"INSERT SOFT DB.DBA.SYS_SPARQL_HOST (SH_HOST, SH_GRAPH_URI) VALUES ('{sh_host}', '{member_iri}');",
-        isql_path,
-        container_name,
-    )
-
-    return f"http://{resolved_vhost}:{resolved_port}{lpath}"
+    query = urlencode({"default-graph-uri": member_iri})
+    return f"http://{resolved_vhost}:{vport}/sparql?{query}"
 
 
 def ingest_batch(config: BenchmarkConfig, batch_id: int) -> Path:
@@ -123,6 +105,7 @@ def ingest_batch(config: BenchmarkConfig, batch_id: int) -> Path:
             isql_path,
             container_name,
             vport=virt.port,
+            vhost="host.docker.internal" if config.use_docker else "*ini*",
         )
         proxy_mapping[member_iri] = endpoint_url
 

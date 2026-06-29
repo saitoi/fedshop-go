@@ -1,0 +1,191 @@
+use_docker: true
+generation:
+  workdir: "${config_dir}/../data"
+  queries_dir: "${config_dir}/../queries"
+  n_batch: 2
+  n_query_instances: 2
+  verbose: true
+  stats:
+    confidence_level: 0.95
+  generator:
+    dir: "${config_dir}/../generators/watdiv"
+    exec: "${generation.generator.dir}/bin/Release/watdiv"
+  virtuoso:
+    compose_file: "${config_dir}/../docker/virtuoso.yml"
+    service_name: "bsbm-virtuoso"
+    isql: "/opt/virtuoso-opensource/bin/isql"
+    data_dir: "${generation.workdir}/dataset"
+    port: 8890
+    default_url: "http://localhost:${generation.virtuoso.port}"
+    default_endpoint: "${generation.virtuoso.default_url}/sparql"
+    batch_members:
+      - "http://www.batch0.fr/"
+      - "http://www.batch1.fr/"
+    federation_members:
+      batch0:
+        vendor0: "http://www.vendor0.fr/"
+        vendor1: "http://www.vendor1.fr/"
+        vendor2: "http://www.vendor2.fr/"
+        vendor3: "http://www.vendor3.fr/"
+        vendor4: "http://www.vendor4.fr/"
+        vendor5: "http://www.vendor5.fr/"
+        vendor6: "http://www.vendor6.fr/"
+        vendor7: "http://www.vendor7.fr/"
+        vendor8: "http://www.vendor8.fr/"
+        vendor9: "http://www.vendor9.fr/"
+        ratingsite0: "http://www.ratingsite0.fr/"
+        ratingsite1: "http://www.ratingsite1.fr/"
+        ratingsite2: "http://www.ratingsite2.fr/"
+        ratingsite3: "http://www.ratingsite3.fr/"
+        ratingsite4: "http://www.ratingsite4.fr/"
+        ratingsite5: "http://www.ratingsite5.fr/"
+        ratingsite6: "http://www.ratingsite6.fr/"
+        ratingsite7: "http://www.ratingsite7.fr/"
+        ratingsite8: "http://www.ratingsite8.fr/"
+        ratingsite9: "http://www.ratingsite9.fr/"
+      batch1:
+        vendor0: "http://www.vendor0.fr/"
+        vendor1: "http://www.vendor1.fr/"
+        vendor2: "http://www.vendor2.fr/"
+        vendor3: "http://www.vendor3.fr/"
+        vendor4: "http://www.vendor4.fr/"
+        vendor5: "http://www.vendor5.fr/"
+        vendor6: "http://www.vendor6.fr/"
+        vendor7: "http://www.vendor7.fr/"
+        vendor8: "http://www.vendor8.fr/"
+        vendor9: "http://www.vendor9.fr/"
+        vendor10: "http://www.vendor10.fr/"
+        vendor11: "http://www.vendor11.fr/"
+        vendor12: "http://www.vendor12.fr/"
+        vendor13: "http://www.vendor13.fr/"
+        vendor14: "http://www.vendor14.fr/"
+        vendor15: "http://www.vendor15.fr/"
+        vendor16: "http://www.vendor16.fr/"
+        vendor17: "http://www.vendor17.fr/"
+        vendor18: "http://www.vendor18.fr/"
+        vendor19: "http://www.vendor19.fr/"
+        ratingsite0: "http://www.ratingsite0.fr/"
+        ratingsite1: "http://www.ratingsite1.fr/"
+        ratingsite2: "http://www.ratingsite2.fr/"
+        ratingsite3: "http://www.ratingsite3.fr/"
+        ratingsite4: "http://www.ratingsite4.fr/"
+        ratingsite5: "http://www.ratingsite5.fr/"
+        ratingsite6: "http://www.ratingsite6.fr/"
+        ratingsite7: "http://www.ratingsite7.fr/"
+        ratingsite8: "http://www.ratingsite8.fr/"
+        ratingsite9: "http://www.ratingsite9.fr/"
+        ratingsite10: "http://www.ratingsite10.fr/"
+        ratingsite11: "http://www.ratingsite11.fr/"
+        ratingsite12: "http://www.ratingsite12.fr/"
+        ratingsite13: "http://www.ratingsite13.fr/"
+        ratingsite14: "http://www.ratingsite14.fr/"
+        ratingsite15: "http://www.ratingsite15.fr/"
+        ratingsite16: "http://www.ratingsite16.fr/"
+        ratingsite17: "http://www.ratingsite17.fr/"
+        ratingsite18: "http://www.ratingsite18.fr/"
+        ratingsite19: "http://www.ratingsite19.fr/"
+    endpoints: "${get_docker_endpoints: ${generation.virtuoso.compose_file}, ${generation.virtuoso.service_name}}"
+    container_names: "${get_virtuoso_containers: ${generation.virtuoso.compose_file}, ${generation.virtuoso.service_name}}"
+  schema:
+    product:
+      is_source: false
+      provenance: http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/
+      template: "${config_dir}/../model/watdiv/bsbm-product.template"
+      scale_factor: 1
+      export_output_dir: "${generation.workdir}/product"
+      params:
+        product_n: 20000
+        producer_n: "${get_product_producer_n: ${generation.schema.product.params.product_n}}"
+        feature_n: "${get_product_feature_n: ${generation.schema.product.params.product_n}}"
+        feature_c: 9
+        type_n: "${get_product_type_n: ${generation.schema.product.params.product_n}}"
+        type_c: 9
+        productPropertyTextual4_p: 0.7
+        productPropertyTextual5_p: 0.8
+        productPropertyNumeric4_p: 0.7
+        productPropertyNumeric5_p: 0.8
+        textual_wc: "${normal_truncated: 9, 3, 3, 15}"
+        label_wc: "${normal_truncated: 2, 1, 1, 3}"
+        comment_wc: "${normal_truncated: 100, 20, 50, 150}"
+        type_comment_wc: "${normal_truncated: 35, 10, 20, 50}"
+        feature_comment_wc: "${normal_truncated: 35, 10, 20, 50}"
+        producer_comment_wc: "${normal_truncated: 35, 10, 20, 50}"
+
+    vendor:
+      is_source: true
+      provenance: http://www.{%vendor_id}.fr/
+      template: "${config_dir}/../model/watdiv/bsbm-vendor.template"
+      export_output_dir: "${generation.workdir}/dataset"
+      export_dep_output_dir: "${generation.schema.product.export_output_dir}"
+      scale_factor: 1
+      params:
+        vendor_n: "${multiply: 10, ${generation.n_batch}}"
+        offer_n: "${normal_dist: 3, 1, 20}"
+        product_n: "${generation.schema.product.params.product_n}"
+        label_wc: "${normal_truncated: 2, 1, 1, 3}"
+        comment_wc: "${normal_truncated: 35, 10, 20, 50}"
+
+    ratingsite:
+      is_source: true
+      provenance: http://www.{%ratingsite_id}.fr/
+      template: "${config_dir}/../model/watdiv/bsbm-ratingsite.template"
+      export_output_dir: "${generation.workdir}/dataset"
+      export_dep_output_dir: "${generation.schema.product.export_output_dir}"
+      scale_factor: 1
+      params:
+        ratingsite_n: "${multiply: 10, ${generation.n_batch}}"
+        product_n: "${generation.schema.product.params.product_n}"
+        review_n: "${normal_dist: 3, 1, 100}"
+        person_n: "${divide: ${generation.schema.ratingsite.params.review_n}, 20}"
+        person_name_wc: "${normal_truncated: 3, 1, 2, 4}"
+        label_wc: "${normal_truncated: 2, 1, 1, 3}"
+        text_wc: "${normal_truncated: 125, 20, 50, 200}"
+        title_wc: "${normal_truncated: 9, 3, 4, 15}"
+        rating1_p: 0.7
+        rating2_p: 0.7
+        rating3_p: 0.7
+        rating4_p: 0.7
+
+evaluation:
+  n_attempts: 1
+  timeout: 120
+  proxy:
+    compose_file: "${config_dir}/../docker/proxy.yml"
+    service_name: "fedshop-proxy"
+    host: "localhost"
+    port: 5555
+    endpoint: "http://${evaluation.proxy.host}:${evaluation.proxy.port}/"
+    container_name: "docker-fedshop-proxy-1"
+    targets: "${get_proxy_target: }"
+  engines:
+    fedshop-go:
+      dir: "${config_dir}/../../go-engine"
+      selector: ask
+      cache: memory
+      join: bind
+      planner: source-count
+      exclusive_groups: true
+      failure_policy: strict
+      max_concurrency: 4
+      bind_batch_size: 20
+      retry_count: 2
+      post_bind_max_input_rows: 10
+    pyfedx:
+      dir: "${config_dir}/../../scripts"
+    fedx:
+      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/FedShop/engines/FedX"
+    rsa:
+      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/FedShop/engines/ARQ"
+      fedup_dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/query-engines/fedup"
+      internal_endpoint_prefix: "http://localhost:8890/sparql/?default-graph-uri="
+      compose_file: "${config_dir}/../docker/jena.yml"
+      service_name: "jena-fuseki"
+      endpoint: "http://localhost:3030/FedShop/query"
+      container_name: "docker-jena-fuseki-1"
+    semagrow:
+      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/query-engines/semagrow"
+      summary_generator_dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/query-engines/sevod-scraper"
+    splendid:
+      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/query-engines/splendid-server"
+    anapsid:
+      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/query-engines/anapsid"

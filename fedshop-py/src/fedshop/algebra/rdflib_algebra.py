@@ -281,7 +281,11 @@ def remove_filter_with_placeholders(node, consts):
             return node
 
         if node.name == "Filter":
+            if not filter_consts:
+                return CompValue("Placeholder", old=node)
             node = traverse(node, visitPost=lambda x: remove_expression_with_placeholder(x, filter_consts))
+            if is_node_placeholder(node.get("expr")):
+                return CompValue("Placeholder", old=node)
             return node
 
         if "part" in node.keys():

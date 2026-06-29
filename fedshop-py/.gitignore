@@ -1,12 +1,8 @@
 # Generated dataset and evaluation output — too large for git
-experiments/bsbm/model/
-experiments/bsbm/benchmark/
-experiments/bsbm/stats/
-
-# Sentinel / runtime files
-experiments/bsbm/*.txt
-experiments/bsbm/*.json
-experiments/bsbm/log.txt
+data/dataset/
+data/product/
+benchmark/evaluation/
+benchmark/generation/
 
 # Scratch / temp
 saved.txt

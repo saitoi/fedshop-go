@@ -1,0 +1,9 @@
+attempt,engine,query,instance,batch,nb_results,nb_distinct_sources,relevant_sources_selectivity,tpwss,avg_rwss,min_rwss,max_rwss
+1,fedx,q06,0,0,400.0,20,1.0,40.0,,,
+1,fedx,q06,0,1,1600.0,40,1.0,80.0,,,
+1,fedx,q06,1,0,400.0,20,1.0,40.0,,,
+1,fedx,q06,1,1,1600.0,40,1.0,80.0,,,
+1,fedx,q10,0,0,,20,1.0,140.0,,,
+1,fedx,q10,0,1,,40,1.0,280.0,,,
+1,fedx,q10,1,0,,20,1.0,140.0,,,
+1,fedx,q10,1,1,,40,1.0,280.0,,,

@@ -151,7 +151,7 @@ class PyFedXAdapter(EngineAdapter):
         proxy_stats: dict,
     ) -> None:
         m = re.match(
-            r".*/(\w+)/(q\w+)/instance_(\d+)/batch_(\d+)/attempt_(\d+)/stats.csv",
+            r".*/([\w-]+)/(q\w+)/instance_(\d+)/batch_(\d+)/attempt_(\d+)/stats.csv",
             str(stats_path),
         )
         if not m:
@@ -175,10 +175,10 @@ class PyFedXAdapter(EngineAdapter):
             "attempt": m.group(5),
             "exec_time": failed_reason if failed_reason else _v("total_seconds", exec_time),
             "source_selection_time": failed_reason if failed_reason else _v("source_selection_seconds", 0.0),
-            "planning_time": failed_reason if failed_reason else 0.0,
+            "planning_time": failed_reason if failed_reason else _v("planning_seconds", 0.0),
             "ask": failed_reason if failed_reason else _v("ask", 0),
-            "http_req": failed_reason if failed_reason else proxy_stats.get("NB_HTTP_REQ", 0),
-            "data_transfer": failed_reason if failed_reason else proxy_stats.get("DATA_TRANSFER", 0),
+            "http_req": failed_reason if failed_reason else _v("http_requests", proxy_stats.get("NB_HTTP_REQ", 0)),
+            "data_transfer": failed_reason if failed_reason else _v("data_transfer", proxy_stats.get("DATA_TRANSFER", 0)),
         }
         stats_path.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame([row]).to_csv(stats_path, index=False)

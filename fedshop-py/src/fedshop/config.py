@@ -41,6 +41,7 @@ class GeneratorConfig:
 @dataclass
 class GenerationConfig:
     workdir: str
+    queries_dir: str
     n_batch: int
     n_query_instances: int
     verbose: bool
@@ -112,7 +113,7 @@ def _flatten(d: dict, prefix: str = "", out: dict | None = None) -> dict[str, An
     return out
 
 
-def _resolve_all(raw: dict) -> dict:
+def _resolve_all(raw: dict, seed: dict[str, Any] | None = None) -> dict:
     """
     Multi-pass resolver: flatten, then iteratively apply custom resolvers and
     ${} string interpolation until the dict stabilises.
@@ -123,8 +124,11 @@ def _resolve_all(raw: dict) -> dict:
       divide → integer division
       get_product_* → small fixed defaults
       get_docker_endpoints / get_virtuoso_containers / get_proxy_target → []
+
+    ``seed`` pre-populates the flat dict with auto-variables (e.g. config_dir)
+    before the YAML keys are merged in, so they are available for ${} refs.
     """
-    flat = _flatten(raw)
+    flat = {**(seed or {}), **_flatten(raw)}
 
     def apply_custom_resolvers(s: str) -> str:
         """Replace all ${custom_resolver: ...} patterns with their computed values."""
@@ -232,7 +236,8 @@ def load_config(path: str | Path) -> BenchmarkConfig:
     with open(path) as f:
         raw: dict = yaml.safe_load(f)
 
-    flat = _resolve_all(raw)
+    seed = {"config_dir": str(Path(path).resolve().parent)}
+    flat = _resolve_all(raw, seed)
     resolved = _rebuild(raw, flat)
     gen = resolved["generation"]
     evl = resolved["evaluation"]
@@ -268,8 +273,10 @@ def load_config(path: str | Path) -> BenchmarkConfig:
             params=dict(sdata.get("params", {})),
         )
 
+    _workdir_default = str(gen.get("workdir", "experiments/bsbm"))
     gen_cfg = GenerationConfig(
-        workdir=str(gen.get("workdir", "experiments/bsbm")),
+        workdir=_workdir_default,
+        queries_dir=str(gen.get("queries_dir", _workdir_default + "/queries")),
         n_batch=int(gen.get("n_batch", 2)),
         n_query_instances=int(gen.get("n_query_instances", 2)),
         verbose=bool(gen.get("verbose", False)),

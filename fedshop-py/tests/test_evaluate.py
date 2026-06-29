@@ -1,9 +1,6 @@
 """Tests for evaluate.py — evaluation loop and timeout propagation."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 
 def test_check_timeout_propagation_returns_true_for_empty_file_no_stats(tmp_path):
@@ -90,6 +87,10 @@ def test_run_evaluation_noexec_writes_timeout_stats(config_small, tmp_path):
 
     import pandas as pd
 
+    query_path = tmp_path / "generation" / "q01" / "instance_0" / "injected.sparql"
+    query_path.parent.mkdir(parents=True, exist_ok=True)
+    query_path.write_text("SELECT * WHERE { ?s ?p ?o }")
+
     stats = run_evaluation(
         config=config_small,
         engine_name="fedx",
@@ -104,6 +105,37 @@ def test_run_evaluation_noexec_writes_timeout_stats(config_small, tmp_path):
     assert stats.exists()
     df = pd.read_csv(stats)
     assert df.iloc[0]["exec_time"] == "timeout"
+
+
+def test_run_evaluation_noexec_truncates_stale_normalized_artifacts(config_small, tmp_path):
+    """A failed rerun must not leave results/provenance from an older attempt."""
+    from fedshop.evaluate import run_evaluation
+
+    query_path = tmp_path / "generation" / "q01" / "instance_0" / "injected.sparql"
+    query_path.parent.mkdir(parents=True, exist_ok=True)
+    query_path.write_text("SELECT * WHERE { ?s ?p ?o }")
+
+    out_dir = (
+        tmp_path / "evaluation" / "fedshop-go" / "q01" / "instance_0"
+        / "batch_0" / "attempt_0"
+    )
+    out_dir.mkdir(parents=True)
+    (out_dir / "results.csv").write_text("value\nstale\n")
+    (out_dir / "provenance.csv").write_text("tp0\nstale-source\n")
+
+    run_evaluation(
+        config=config_small,
+        engine_name="fedshop-go",
+        query_name="q01",
+        instance_id=0,
+        batch_id=0,
+        attempt=0,
+        bench_dir=tmp_path,
+        noexec=True,
+    )
+
+    assert (out_dir / "results.csv").read_text() == ""
+    assert (out_dir / "provenance.csv").read_text() == ""
 
 
 def test_run_evaluation_calls_proxy_reset_before_engine(config_small, tmp_path, mock_proxy_client):
@@ -136,7 +168,6 @@ def test_run_evaluation_calls_proxy_reset_before_engine(config_small, tmp_path, 
 
     with patch("fedshop.evaluate.run_evaluation") as mock_run:
         mock_run.return_value = tmp_path / "stats.csv"
-        import pandas as pd
         (tmp_path / "stats.csv").parent.mkdir(parents=True, exist_ok=True)
 
     # The test just verifies noexec path doesn't call engine — full path requires FedX binary

@@ -1,0 +1,22 @@
+{
+  "http://www.vendor0.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor0.fr%2F",
+  "http://www.vendor1.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor1.fr%2F",
+  "http://www.vendor2.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor2.fr%2F",
+  "http://www.vendor3.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor3.fr%2F",
+  "http://www.vendor4.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor4.fr%2F",
+  "http://www.vendor5.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor5.fr%2F",
+  "http://www.vendor6.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor6.fr%2F",
+  "http://www.vendor7.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor7.fr%2F",
+  "http://www.vendor8.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor8.fr%2F",
+  "http://www.vendor9.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.vendor9.fr%2F",
+  "http://www.ratingsite0.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite0.fr%2F",
+  "http://www.ratingsite1.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite1.fr%2F",
+  "http://www.ratingsite2.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite2.fr%2F",
+  "http://www.ratingsite3.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite3.fr%2F",
+  "http://www.ratingsite4.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite4.fr%2F",
+  "http://www.ratingsite5.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite5.fr%2F",
+  "http://www.ratingsite6.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite6.fr%2F",
+  "http://www.ratingsite7.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite7.fr%2F",
+  "http://www.ratingsite8.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite8.fr%2F",
+  "http://www.ratingsite9.fr/": "http://host.docker.internal:8890/sparql?default-graph-uri=http%3A%2F%2Fwww.ratingsite9.fr%2F"
+}

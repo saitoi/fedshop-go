@@ -7,8 +7,9 @@ from pathlib import Path
 
 import click
 
-DEFAULT_CONFIG = "experiments/bsbm/snakefile/config_small.yaml"
-DEFAULT_BENCH_DIR = "experiments/bsbm/benchmark"
+_FEDSHOP_PY_DIR = Path(__file__).parent.parent.parent  # src/fedshop/ → src/ → fedshop-py/
+DEFAULT_CONFIG = str(_FEDSHOP_PY_DIR / "config/config_small.yaml")
+DEFAULT_BENCH_DIR = str(_FEDSHOP_PY_DIR / "benchmark")
 
 
 def _load(config_path: str):
@@ -95,8 +96,7 @@ def query_run_all(config, bench_dir, batch_id, query_name):
     """Generate queries for all templates (value selection → instantiation → reference exec)."""
     import os
     cfg = _load(config)
-    workdir = cfg.generation.workdir
-    templates_dir = Path(workdir) / "queries"
+    templates_dir = Path(cfg.generation.queries_dir)
     output_dir = Path(bench_dir) / "generation"
 
     templates = sorted(templates_dir.glob("q*.sparql"))
@@ -113,14 +113,17 @@ def query_run_all(config, bench_dir, batch_id, query_name):
             continue
         q_output_dir = output_dir / template_path.stem
         q_output_dir.mkdir(parents=True, exist_ok=True)
-        generate_queries_for_template(
-            template_path=template_path,
-            const_path=const_path,
-            output_dir=q_output_dir,
-            config=cfg,
-            batch_id=batch_id,
-        )
-        click.echo(f"Generated queries for {template_path.stem}")
+        try:
+            generate_queries_for_template(
+                template_path=template_path,
+                const_path=const_path,
+                output_dir=q_output_dir,
+                config=cfg,
+                batch_id=batch_id,
+            )
+            click.echo(f"Generated queries for {template_path.stem}")
+        except Exception as exc:
+            click.echo(f"Warning: skipping {template_path.stem} (batch {batch_id}): {exc}", err=True)
 
 
 # ─── Phase 4: evaluate ──────────────────────────────────────────────────────
@@ -136,12 +139,14 @@ def evaluate():
 def evaluate_prerequisites(engine, config):
     """Check/compile prerequisites for ENGINE."""
     from .engines.costfed import CostFedAdapter
+    from .engines.fedshop_go import FedShopGoAdapter
     from .engines.fedx import FedXAdapter
     from .engines.pyfedx import PyFedXAdapter
     cfg = _load(config)
-    adapters = {"fedx": FedXAdapter, "pyfedx": PyFedXAdapter, "costfed": CostFedAdapter}
+    adapters = {"fedx": FedXAdapter, "pyfedx": PyFedXAdapter, "costfed": CostFedAdapter, "fedshop-go": FedShopGoAdapter}
     if engine not in adapters:
-        raise click.ClickException(f"Unknown engine: {engine}")
+        click.echo(f"Warning: no adapter for engine '{engine}', skipping prerequisites.", err=True)
+        return
     adapters[engine](cfg).prerequisites()
 
 
@@ -153,14 +158,36 @@ def evaluate_generate_config(engine, batch_id, config):
     """Write federation config file for ENGINE at BATCH_ID."""
     import json
     from .engines.costfed import CostFedAdapter
+    from .engines.fedshop_go import FedShopGoAdapter
     from .engines.fedx import FedXAdapter
     from .engines.pyfedx import PyFedXAdapter
+    from .engines.rsa import RsaAdapter
+    from .engines.semagrow import SemagrowAdapter
+    from .engines.splendid import SplendidAdapter
     cfg = _load(config)
     mapping_file = Path(cfg.generation.workdir) / f"virtuoso-proxy-mapping-batch{batch_id}.json"
     proxy_mapping = json.loads(mapping_file.read_text()) if mapping_file.exists() else {}
-    adapters = {"fedx": FedXAdapter, "pyfedx": PyFedXAdapter, "costfed": CostFedAdapter}
+    adapters = {
+        "fedx": FedXAdapter,
+        "pyfedx": PyFedXAdapter,
+        "costfed": CostFedAdapter,
+        "fedshop-go": FedShopGoAdapter,
+        "rsa": RsaAdapter,
+        "semagrow": SemagrowAdapter,
+        "splendid": SplendidAdapter,
+    }
     path = adapters[engine](cfg).generate_config_file(batch_id, proxy_mapping)
     click.echo(f"Config written to {path}")
+
+
+@evaluate.command("build-summary")
+@click.argument("batch_id", type=int)
+@click.option("--config", default=DEFAULT_CONFIG, show_default=True)
+def evaluate_build_summary(batch_id, config):
+    """Build the measured fedshop-go endpoint summary for BATCH_ID."""
+    from .engines.fedshop_go import FedShopGoAdapter
+    path = FedShopGoAdapter(_load(config)).build_summary(batch_id)
+    click.echo(f"Summary written to {path}")
 
 
 @evaluate.command("run")
@@ -224,10 +251,10 @@ def metrics_compute(outfile, provenance_files, config, bench_dir):
     cfg = _load(config)
 
     if not provenance_files:
-        provenance_files = sorted(glob.glob(f"{bench_dir}/evaluation/**/provenance.csv", recursive=True))
-
-    if not provenance_files:
-        raise click.ClickException("No provenance files found.")
+        from .metrics import compute_full_metrics
+        df = compute_full_metrics(cfg, Path(bench_dir), outfile)
+        click.echo(f"Metrics written to {outfile} ({len(df)} rows)")
+        return
 
     df = compute_metrics(cfg, list(provenance_files), outfile)
     click.echo(f"Metrics written to {outfile} ({len(df)} rows)")
