@@ -1,3 +1,8 @@
 [submodule "reference-repos/FedShop-wiki"]
 	path = reference-repos/FedShop-wiki
 	url = https://github.com/GDD-Nantes/FedShop.wiki.git
+
+[submodule "reference-repos/FedShop/engines/FedX"]
+	path = reference-repos/FedShop/engines/FedX
+	url = https://github.com/Yotlan/FedX.git
+	branch = master
