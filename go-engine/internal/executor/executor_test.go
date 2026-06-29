@@ -12,13 +12,13 @@ type fakeClient struct {
 	rows map[string][]Binding
 }
 
-func (c fakeClient) Select(_ context.Context, endpoint federation.Endpoint, triples []sparql.TriplePattern, _ []Binding) ([]Binding, error) {
+func (c fakeClient) Select(_ context.Context, endpoint federation.Endpoint, triples []sparql.TriplePattern, _ []Binding, _ ...string) ([]Binding, error) {
 	return cloneRows(c.rows[endpoint.ID+":"+triples[0].Key()]), nil
 }
 
 type bindRecordingClient struct{ calls []int }
 
-func (c *bindRecordingClient) Select(_ context.Context, _ federation.Endpoint, triples []sparql.TriplePattern, inputs []Binding) ([]Binding, error) {
+func (c *bindRecordingClient) Select(_ context.Context, _ federation.Endpoint, triples []sparql.TriplePattern, inputs []Binding, _ ...string) ([]Binding, error) {
 	c.calls = append(c.calls, len(inputs))
 	if len(triples) > 1 {
 		return []Binding{{"s": IRI("http://s"), "o": IRI("http://o")}}, nil
@@ -31,7 +31,7 @@ func (c *bindRecordingClient) Select(_ context.Context, _ federation.Endpoint, t
 
 type groupInputClient struct{ calls map[string][]int }
 
-func (c *groupInputClient) Select(_ context.Context, _ federation.Endpoint, triples []sparql.TriplePattern, inputs []Binding) ([]Binding, error) {
+func (c *groupInputClient) Select(_ context.Context, _ federation.Endpoint, triples []sparql.TriplePattern, inputs []Binding, _ ...string) ([]Binding, error) {
 	predicate := triples[0].Predicate.Value
 	c.calls[predicate] = append(c.calls[predicate], len(inputs))
 	switch predicate {
@@ -360,7 +360,7 @@ type callRecordingClient struct {
 	fn func(federation.Endpoint, []sparql.TriplePattern, []Binding) ([]Binding, error)
 }
 
-func (c *callRecordingClient) Select(_ context.Context, ep federation.Endpoint, tps []sparql.TriplePattern, inputs []Binding) ([]Binding, error) {
+func (c *callRecordingClient) Select(_ context.Context, ep federation.Endpoint, tps []sparql.TriplePattern, inputs []Binding, _ ...string) ([]Binding, error) {
 	return c.fn(ep, tps, inputs)
 }
 

@@ -1,0 +1,38 @@
+Estado atual do benchmark FedShop
+
+Infraestrutura
+
+- Pipeline completo funcionando: geração → ingestão (Virtuoso) → avaliação → métricas
+- 6 engines integradas: fedx, pyfedx, rsa, semagrow, splendid, fedshop-go
+- compute_full_metrics() gera CSV com 20 colunas cobrindo correção, tempo, rede, seleção e robustez
+
+Resultados (benchmark/metrics_full.csv, 336 rows)
+
+┌────────────┬─────┬─────────┬───────┬─────────────────────────────────────┐
+│   Engine   │ ok  │ timeout │ error │        Mismatches (ok runs)         │
+├────────────┼─────┼─────────┼───────┼─────────────────────────────────────┤
+│ fedshop-go │ 44  │ 22      │ 0     │ 0 ✓                                 │
+├────────────┼─────┼─────────┼───────┼─────────────────────────────────────┤
+│ fedx       │ 69  │ 0       │ 0     │ 51 (attempt_0 com Virtuoso down)    │
+├────────────┼─────┼─────────┼───────┼─────────────────────────────────────┤
+│ pyfedx     │ 26  │ 22      │ 1     │ 0                                   │
+├────────────┼─────┼─────────┼───────┼─────────────────────────────────────┤
+│ rsa        │ 49  │ 0       │ 0     │ 35 (attempt_0 com Virtuoso do
+├────────────┼─────┼─────────┼───────┼─────────────────────────────────────┤
+│ semagrow   │ 49  │ 0       │ 0     │ 22 (q11 schema + queries complexas) │
+├────────────┼─────┼─────────┼───────┼──────────────────────────────
+│ splendid   │ 54  │ 0       │ 0     │ 8 (q02/q05/q11)                     │
+└────────────┴─────┴─────────┴───────┴─────────────────────────────────────┘
+
+Fixes aplicados nesta sessão
+
+1. Go engine: FILTER type mismatch (integer > xsd:date → false) — el
+2. _mismatch: detecta column mismatch (→ True) e normaliza floats (→
+3. _write_stats (4 adapters): exec_time recebe "timeout" quando falha, não float
+4. splendid.py: mata JVM antes de ler stdout → evita exec_time=167s
+
+Pendente
+
+- fedx/rsa: 51/35 mismatches por Virtuoso down no attempt_0 — dados válidos no attempt_1
+- semagrow q11: retorna 20 vs ref 10 (problema no engine Java, não n
+- RSA attempt_1: ainda rodando em background quando a sessão anterio

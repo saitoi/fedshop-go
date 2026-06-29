@@ -18,10 +18,25 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import requests
 
 from ..config import BenchmarkConfig
 from ..engines.base import EngineAdapter
 from ..proxy import ProxyClient
+
+
+def _wait_virtuoso(endpoint: str, max_wait: int = 120) -> None:
+    """Block until Virtuoso SPARQL endpoint responds or raise RuntimeError."""
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        try:
+            r = requests.get(endpoint, params={"query": "ASK {?s ?p ?o}"}, timeout=5)
+            if r.status_code == 200:
+                return
+        except Exception:
+            pass
+        time.sleep(2)
+    raise RuntimeError(f"Virtuoso did not become ready at {endpoint} within {max_wait}s")
 
 
 def _label_encode(x: list[str]) -> list[int]:
@@ -131,6 +146,8 @@ class FedXAdapter(EngineAdapter):
         if proxy_client is None:
             proxy_client = ProxyClient(proxy_endpoint)
 
+        virt_port = self.config.generation.virtuoso.port
+        _wait_virtuoso(f"http://localhost:{virt_port}/sparql")
         proxy_client.reset()
 
         args = " ".join([

@@ -27,7 +27,7 @@ import pandas as pd
 
 from ..config import BenchmarkConfig
 from ..engines.base import EngineAdapter
-from ..engines.fedx import _pad
+from ..engines.fedx import _pad, _wait_virtuoso
 from ..proxy import ProxyClient
 
 
@@ -206,6 +206,9 @@ class SemagrowAdapter(EngineAdapter):
 
         if proxy_client is None:
             proxy_client = ProxyClient(proxy_cfg.endpoint)
+
+        virt_port = self.config.generation.virtuoso.port
+        _wait_virtuoso(f"http://localhost:{virt_port}/sparql")
         proxy_client.reset()
 
         noexec_flag = "--noexec" if noexec else ""
@@ -300,7 +303,9 @@ class SemagrowAdapter(EngineAdapter):
         if infile.stat().st_size == 0:
             outfile.touch()
         else:
-            shutil.copy(infile, outfile)
+            df = pd.read_csv(infile)
+            df.drop_duplicates(inplace=True)
+            df.to_csv(outfile, index=False)
 
     def transform_provenance(
         self,

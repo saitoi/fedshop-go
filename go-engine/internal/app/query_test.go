@@ -16,7 +16,7 @@ type fakeProtocol struct{}
 func (fakeProtocol) Ask(context.Context, federation.Endpoint, sparql.TriplePattern) (bool, error) {
 	return true, nil
 }
-func (fakeProtocol) Select(_ context.Context, _ federation.Endpoint, _ []sparql.TriplePattern, _ []executor.Binding) ([]executor.Binding, error) {
+func (fakeProtocol) Select(_ context.Context, _ federation.Endpoint, _ []sparql.TriplePattern, _ []executor.Binding, _ ...string) ([]executor.Binding, error) {
 	return []executor.Binding{{"s": executor.IRI("http://example/s")}}, nil
 }
 func (fakeProtocol) Requests() int64 { return 1 }

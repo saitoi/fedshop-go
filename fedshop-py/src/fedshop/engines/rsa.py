@@ -255,6 +255,9 @@ class RsaAdapter(EngineAdapter):
         if proxy_client is None:
             proxy_client = ProxyClient(proxy_cfg.endpoint)
 
+        virt = self.config.generation.virtuoso
+        virt_sparql = f"http://localhost:{virt.port}/sparql"
+        _wait_jena(virt_sparql)
         proxy_client.reset()
 
         fedup_dir = self.fedup_dir

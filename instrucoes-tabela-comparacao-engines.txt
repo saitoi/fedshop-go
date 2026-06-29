@@ -1,0 +1,26 @@
+Adiciona mais colunas de comparacao entre as engines.
+Baseie-se em ./reference-papers/*.pdf e ./reference-repos/query-engines/
+
+#figure(
+  table(
+    columns: (auto, auto, auto, auto),
+    align: (left, left, left, center),
+    stroke: none,
+    inset: 5pt,
+    table.header(
+      [*Engine*],
+      [*Seleção de Fontes*],
+      [*Estratégia de Join*],
+      [*Escalabilidade*],
+    ),
+    table.hline(stroke: .6pt),
+    [RSA], [Broadcast (SERVICE pré-atribuído)], [Hash join local], [Alta],
+    [FedShop-Go], [ASK + cache], [Hash / bind join], [Média],
+    [FedX], [ASK + índice de seletividade], [Bound join], [Alta],
+    [PyFedX], [ASK], [Hash join], [Média],
+    [SPLENDID], [Estatísticas VOID], [Hash join], [Alta],
+    [SemaGrow], [SPARQLED / VOID], [Hash join], [Alta],
+    table.hline(stroke: .6pt),
+  ),
+  caption: [Comparação das estratégias dos motores avaliados.],
+)

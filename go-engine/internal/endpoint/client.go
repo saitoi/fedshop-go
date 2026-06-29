@@ -94,8 +94,8 @@ func (c *Client) Ask(ctx context.Context, endpoint federation.Endpoint, triple s
 }
 
 // Select implements executor.Client.
-func (c *Client) Select(ctx context.Context, endpoint federation.Endpoint, triples []sparql.TriplePattern, inputs []executor.Binding) ([]executor.Binding, error) {
-	query := buildSelect(triples, inputs)
+func (c *Client) Select(ctx context.Context, endpoint federation.Endpoint, triples []sparql.TriplePattern, inputs []executor.Binding, filters ...string) ([]executor.Binding, error) {
+	query := buildSelect(triples, inputs, filters...)
 	return c.Query(ctx, endpoint, query)
 }
 
@@ -202,7 +202,7 @@ func (c *Client) do(ctx context.Context, endpointURL, query string) ([]byte, err
 	return nil, lastErr
 }
 
-func buildSelect(triples []sparql.TriplePattern, inputs []executor.Binding) string {
+func buildSelect(triples []sparql.TriplePattern, inputs []executor.Binding, filters ...string) string {
 	var builder strings.Builder
 	builder.WriteString("SELECT * WHERE { ")
 	if len(inputs) > 0 {
@@ -260,6 +260,11 @@ func buildSelect(triples []sparql.TriplePattern, inputs []executor.Binding) stri
 	for _, triple := range triples {
 		builder.WriteString(triple.Key())
 		builder.WriteString(" . ")
+	}
+	for _, f := range filters {
+		builder.WriteString("FILTER (")
+		builder.WriteString(f)
+		builder.WriteString(") ")
 	}
 	builder.WriteString("}")
 	return builder.String()

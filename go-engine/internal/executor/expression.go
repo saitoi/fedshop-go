@@ -8,6 +8,43 @@ import (
 	"unicode"
 )
 
+// substituteConstants replaces ?var tokens in a SPARQL filter expression with
+// their literal values for variables present in constants. Non-constant variables
+// are left unchanged. The result is suitable for injection as a SPARQL FILTER.
+func substituteConstants(filter string, constants map[string]Value) string {
+	if len(constants) == 0 {
+		return filter
+	}
+	tokens := expressionTokens(filter)
+	var parts []string
+	for _, tok := range tokens {
+		if strings.HasPrefix(tok, "?") {
+			if val, ok := constants[tok[1:]]; ok {
+				parts = append(parts, renderSPARQLLiteral(val))
+				continue
+			}
+		}
+		parts = append(parts, tok)
+	}
+	return strings.Join(parts, " ")
+}
+
+// renderSPARQLLiteral serialises a Value as a SPARQL term suitable for embedding
+// in a query string (IRI or typed/plain/language-tagged literal).
+func renderSPARQLLiteral(val Value) string {
+	if val.Kind == "uri" {
+		return "<" + val.Lexical + ">"
+	}
+	quoted := strconv.Quote(val.Lexical)
+	if val.Language != "" {
+		return quoted + "@" + val.Language
+	}
+	if val.Datatype != "" {
+		return quoted + "^^<" + val.Datatype + ">"
+	}
+	return quoted
+}
+
 type scalar struct {
 	value any
 	bound bool

@@ -17,8 +17,10 @@ import (
 var debugExec = os.Getenv("DEBUG_EXEC") == "1"
 
 // Client executes triple-pattern groups at an endpoint.
+// The optional filters variadic allows callers to inject SPARQL FILTER expressions
+// that the endpoint should evaluate alongside the triple patterns (push-down).
 type Client interface {
-	Select(context.Context, federation.Endpoint, []sparql.TriplePattern, []Binding) ([]Binding, error)
+	Select(context.Context, federation.Endpoint, []sparql.TriplePattern, []Binding, ...string) ([]Binding, error)
 }
 
 // Options controls physical execution.
@@ -217,8 +219,23 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 		if len(sources) == 0 {
 			return nil, stats, nil
 		}
+		// If the triple's subject is uniformly bound to an IRI that maps to exactly one
+		// endpoint, restrict sources to that endpoint. This avoids cross-product explosion
+		// when the same local product/resource is replicated across many endpoints with
+		// different property values (e.g., BSBM product textual properties).
+		sources = pruneSourcesBySubjectLocality(triple, sources, rows)
+
+		// Compute filters that can be pushed into the endpoint query for this triple.
+		// A filter is pushable when (after substituting constant-valued variables) its
+		// only remaining unbound variables are introduced by this specific triple.
+		var pushFilters []string
+		if len(pendingFilters) > 0 {
+			if constants := extractConstantVars(rows); len(constants) > 0 {
+				pushFilters = derivePushableFilters(pendingFilters, rows, triple, constants)
+			}
+		}
 		t0 := time.Now()
-		union, s, err := e.fetchTriple(ctx, triple, sources, rows)
+		union, s, err := e.fetchTriple(ctx, triple, sources, rows, pushFilters...)
 		if debugExec {
 			fmt.Fprintf(os.Stderr, "[exec] tp%d %s %s %s (srcs=%d, inputs=%d) → %d results in %v\n",
 				triple.ID, triple.Subject.Value, triple.Predicate.Value, triple.Object.Value,
@@ -328,6 +345,54 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 					rows = kept
 				}
 				pendingFilters = nil
+				break
+			}
+		}
+		// Per-endpoint compound: generalises postBind to rows spread across multiple
+		// endpoints. When every row maps exclusively to ONE endpoint (via the first
+		// remaining triple's subject locality) and all remaining triples are served by
+		// that same endpoint, send a single compound SPARQL query per endpoint group
+		// instead of N-triples × M-endpoints individual requests.
+		if len(rest) > 1 && e.options.ExclusiveGroups {
+			var compoundFilters []string
+			if len(pendingFilters) > 0 {
+				if constants := extractConstantVars(rows); len(constants) > 0 {
+					compoundFilters = derivePushableFiltersCompound(pendingFilters, rows, rest, constants)
+				}
+			}
+			if groups := perEndpointCompound(rest, selection, rows); groups != nil {
+				var merged []Binding
+				for _, g := range groups {
+					remote, err := e.client.Select(ctx, g.endpoint, rest, g.rows, compoundFilters...)
+					stats.HTTPRequests++
+					if err != nil {
+						if e.options.FailurePolicy == "partial" {
+							stats.Partial = true
+							stats.FailedEndpoints = append(stats.FailedEndpoints, g.endpoint.ID)
+							continue
+						}
+						return nil, stats, fmt.Errorf("select per-endpoint group %s: %w", g.endpoint.ID, err)
+					}
+					merged = append(merged, join(g.rows, remote)...)
+				}
+				rows = distinct(merged, nil)
+				for _, f := range pendingFilters {
+					kept := rows[:0]
+					for _, row := range rows {
+						ok, ferr := evalFilterWithScalars(f, row, scalarSets)
+						if ferr != nil {
+							return nil, stats, fmt.Errorf("filter %q: %w", f, ferr)
+						}
+						if ok {
+							kept = append(kept, row)
+						}
+					}
+					rows = kept
+				}
+				pendingFilters = nil
+				if debugExec {
+					fmt.Fprintf(os.Stderr, "[exec] per-endpoint-compound %d groups → %d rows\n", len(groups), len(rows))
+				}
 				break
 			}
 		}
@@ -601,8 +666,9 @@ func removeConsumed(filters []string, consumed map[int]bool) []string {
 }
 
 // fetchTriple executes one triple pattern across its selected endpoints, using
-// concurrent goroutines bounded by MaxConcurrency.
-func (e *Executor) fetchTriple(ctx context.Context, triple sparql.TriplePattern, sources []federation.Endpoint, rows []Binding) ([]Binding, Stats, error) {
+// concurrent goroutines bounded by MaxConcurrency. pushFilters are SPARQL FILTER
+// expressions to inject into each endpoint query for push-down pruning.
+func (e *Executor) fetchTriple(ctx context.Context, triple sparql.TriplePattern, sources []federation.Endpoint, rows []Binding, pushFilters ...string) ([]Binding, Stats, error) {
 	stats := Stats{}
 	batchSize := e.options.BindBatchSize
 	if batchSize < 1 {
@@ -683,7 +749,7 @@ func (e *Executor) fetchTriple(ctx context.Context, triple sparql.TriplePattern,
 			inp := t.inputs
 			if len(inp) == 0 {
 				// Unconstrained fetch (hash join or first triple)
-				remote, err := e.client.Select(ctx, t.endpoint, []sparql.TriplePattern{triple}, nil)
+				remote, err := e.client.Select(ctx, t.endpoint, []sparql.TriplePattern{triple}, nil, pushFilters...)
 				requests++
 				if err != nil {
 					results[idx] = result{nil, requests, t.endpoint.ID, err}
@@ -696,7 +762,7 @@ func (e *Executor) fetchTriple(ctx context.Context, triple sparql.TriplePattern,
 					if end > len(inp) {
 						end = len(inp)
 					}
-					remote, err := e.client.Select(ctx, t.endpoint, []sparql.TriplePattern{triple}, inp[offset:end])
+					remote, err := e.client.Select(ctx, t.endpoint, []sparql.TriplePattern{triple}, inp[offset:end], pushFilters...)
 					requests++
 					if err != nil {
 						results[idx] = result{nil, requests, t.endpoint.ID, err}
@@ -1419,4 +1485,220 @@ func scalarSetKeys(ss map[string][]Value) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// endpointGroup pairs a target endpoint with the input rows whose subject locality
+// maps exclusively to that endpoint.
+type endpointGroup struct {
+	endpoint federation.Endpoint
+	rows     []Binding
+}
+
+// collectLocalSubjectGroup returns the triples in rest that share the same subject
+// variable (subjVar) as the current triple and can be served by ep. Returns the
+// matching triples and the count to skip in the outer loop. Only CONTIGUOUS triples
+// starting from the front of rest that have subjVar as subject are collected; the first
+// triple with a different subject stops the scan. This lets the caller send all
+// same-subject triples as one compound BGP to ep.
+func collectLocalSubjectGroup(subjVar string, ep federation.Endpoint, rest []sparql.TriplePattern, selection federation.Selection) ([]sparql.TriplePattern, int) {
+	var group []sparql.TriplePattern
+	for _, tp := range rest {
+		if tp.Subject.Kind != sparql.TermVariable || tp.Subject.Value != subjVar {
+			break
+		}
+		servable := false
+		for _, src := range selection[tp.ID] {
+			if src.ID == ep.ID {
+				servable = true
+				break
+			}
+		}
+		if !servable {
+			break
+		}
+		group = append(group, tp)
+	}
+	return group, len(group)
+}
+
+// pruneSourcesBySubjectLocality narrows sources to a single endpoint when the triple's
+// subject variable is uniformly bound to an IRI whose prefix maps to exactly one endpoint.
+// This prevents cross-product explosion when a local resource (e.g., a specific vendor
+// product) is replicated across many endpoints with independently generated property values:
+// without pruning, fetching N independent properties each from M endpoints creates an
+// N^M cross-product in the intermediate result.
+func pruneSourcesBySubjectLocality(triple sparql.TriplePattern, sources []federation.Endpoint, rows []Binding) []federation.Endpoint {
+	if len(rows) == 0 || len(sources) <= 1 || triple.Subject.Kind != sparql.TermVariable {
+		return sources
+	}
+	subjVar := triple.Subject.Value
+	if !uniformValue(rows, subjVar) {
+		return sources
+	}
+	val := rows[0][subjVar]
+	if !val.Bound || val.Kind != "uri" {
+		return sources
+	}
+	for _, ep := range sources {
+		if ep.GraphIRI != "" && strings.HasPrefix(val.Lexical, ep.GraphIRI) {
+			return []federation.Endpoint{ep}
+		}
+	}
+	return sources
+}
+
+// perEndpointCompound partitions rows by exclusive endpoint and verifies that all
+// triples in rest can be served by each endpoint group. Returns nil when any row
+// lacks clear subject locality, when only one group would be formed (handled by
+// postBindExclusiveEndpoint), or when a triple is missing from an endpoint's selection.
+func perEndpointCompound(rest []sparql.TriplePattern, selection federation.Selection, rows []Binding) []endpointGroup {
+	if len(rest) < 2 || len(rows) == 0 {
+		return nil
+	}
+	first := rest[0]
+	sources := selection[first.ID]
+	if len(sources) == 0 {
+		return nil
+	}
+	epIndex := make(map[string]federation.Endpoint, len(sources))
+	for _, ep := range sources {
+		epIndex[ep.ID] = ep
+	}
+	groupMap := make(map[string][]Binding, len(sources))
+	for _, row := range rows {
+		id := subjectEndpointID(row, first, sources)
+		if id == "" {
+			return nil
+		}
+		groupMap[id] = append(groupMap[id], row)
+	}
+	if len(groupMap) <= 1 {
+		// Single group: postBindExclusiveEndpoint already handles this case.
+		return nil
+	}
+	result := make([]endpointGroup, 0, len(groupMap))
+	for epID, groupRows := range groupMap {
+		ep, ok := epIndex[epID]
+		if !ok {
+			return nil
+		}
+		for _, tp := range rest {
+			found := false
+			for _, src := range selection[tp.ID] {
+				if src.ID == epID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil
+			}
+		}
+		result = append(result, endpointGroup{endpoint: ep, rows: groupRows})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].endpoint.ID < result[j].endpoint.ID })
+	return result
+}
+
+// extractConstantVars returns variables that have the same bound value in every row.
+// These can be substituted as literal constants in filter expressions for push-down.
+func extractConstantVars(rows []Binding) map[string]Value {
+	if len(rows) == 0 {
+		return nil
+	}
+	result := map[string]Value{}
+	for v, val := range rows[0] {
+		if !val.Bound {
+			continue
+		}
+		if uniformValue(rows, v) {
+			result[v] = val
+		}
+	}
+	return result
+}
+
+// derivePushableFilters returns filter strings (with constants substituted) that
+// can be safely pushed to the endpoint for the given single triple. A filter is
+// pushable when, after constant substitution, every remaining unbound variable is
+// a NEW variable introduced by triple (not already bound in rows).
+func derivePushableFilters(pending []string, rows []Binding, triple sparql.TriplePattern, constants map[string]Value) []string {
+	if len(pending) == 0 || len(constants) == 0 {
+		return nil
+	}
+	boundVars := map[string]bool{}
+	if len(rows) > 0 {
+		for v, val := range rows[0] {
+			if val.Bound {
+				boundVars[v] = true
+			}
+		}
+	}
+	tripleNewVars := map[string]bool{}
+	for _, v := range triple.Variables() {
+		if !boundVars[v] {
+			tripleNewVars[v] = true
+		}
+	}
+	if len(tripleNewVars) == 0 {
+		return nil
+	}
+	var pushable []string
+	for _, f := range pending {
+		simplified := substituteConstants(f, constants)
+		fvars := regexpVars(simplified)
+		allCovered, hasNew := true, false
+		for _, v := range fvars {
+			if tripleNewVars[v] {
+				hasNew = true
+			} else if !boundVars[v] {
+				allCovered = false
+				break
+			}
+		}
+		if allCovered && hasNew {
+			pushable = append(pushable, simplified)
+		}
+	}
+	return pushable
+}
+
+// derivePushableFiltersCompound returns filter strings (with constants substituted)
+// that can be pushed into a compound query covering all triples in rest.
+// A filter is pushable when all its remaining unbound variables (after substitution)
+// appear in rest's triple patterns or are already bound in rows.
+func derivePushableFiltersCompound(pending []string, rows []Binding, rest []sparql.TriplePattern, constants map[string]Value) []string {
+	if len(pending) == 0 || len(constants) == 0 {
+		return nil
+	}
+	boundVars := map[string]bool{}
+	if len(rows) > 0 {
+		for v, val := range rows[0] {
+			if val.Bound {
+				boundVars[v] = true
+			}
+		}
+	}
+	restVars := map[string]bool{}
+	for _, tp := range rest {
+		for _, v := range tp.Variables() {
+			restVars[v] = true
+		}
+	}
+	var pushable []string
+	for _, f := range pending {
+		simplified := substituteConstants(f, constants)
+		fvars := regexpVars(simplified)
+		allCovered := true
+		for _, v := range fvars {
+			if !boundVars[v] && !restVars[v] {
+				allCovered = false
+				break
+			}
+		}
+		if allCovered {
+			pushable = append(pushable, simplified)
+		}
+	}
+	return pushable
 }

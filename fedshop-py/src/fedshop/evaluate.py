@@ -128,6 +128,11 @@ def run_evaluation(
     ):
         artifact.write_text("")
 
+    # Remove stale metric .txt files so values from a prior session cannot
+    # bleed into stats.csv for the current attempt.
+    for stale_metric in ("source_selection_time.txt", "planning_time.txt"):
+        (out_dir / stale_metric).unlink(missing_ok=True)
+
     if batch_id > 0:
         prev_results = (
             bench_dir / "evaluation" / engine_name / query_name /

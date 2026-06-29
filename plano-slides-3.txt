@@ -6,6 +6,7 @@ Use como referencia:
     - [./slides/apresentacao_ws_2/]: Apresentacao mais recente do trabalho atual (Web Semantica), os resultados expandiram desde entao.
     - [./slides/reference_third_presentation/]: Apresentacao da outra disciplina (Recuperacao da Informacao) com mesmo padrao esperado para a apresentacao de Web Semantica. Baseie-se nessa apresentacao para construir ./slides/apresentacao_ws_3/main.typ
     - [./slides/projeto-final-ri/]: Artigo final da outra disciplina (Recuperacao da Informacao) com mesmo padrao esperado para artigo de Web Semantica. Baseie-se nesse artigo
+    - [./benchmark/]
     - [./reference-papers/]: Artigos das query engines de referencias + artigo do FedShop (./reference-papers/fedshop.pdf).
     - [./reference-repos/]: Repositorios com implementacoes das query engines de referencia + implementacao do fedshop.
     - [./CLAUDE.md, ./AGENTS.md, ./fedshop-py/PIPELINE_GUIDE.md, ./go-engine/DEBUG-HANDOFF.md, ./go-engine/USER_GUIDE.md]: Guias criados de referencia, podem estar atualizados.
