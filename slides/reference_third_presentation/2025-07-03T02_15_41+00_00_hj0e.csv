@@ -1,0 +1,19 @@
+Variável,Correlação,p-valor,Tipo
+loan_status,0.83,0.00,Chi Quadrado (Cramer V)
+repaid_percentage,0.77,0.00,Point Bisserial
+disbursed_percentage,0.76,0.00,Point Bisserial
+loan_type_FSL,0.71,0.00,Chi Quadrado (Cramer V)
+agreement_signing_date_timestamp,0.61,0.00,Point Bisserial
+effective_date_timestamp,0.57,0.00,Point Bisserial
+interest_rate,0.52,0.00,Point Bisserial
+country_code,0.42,0.00,Chi Quadrado (Cramer V)
+loan_type_NON POOL,0.30,0.00,Chi Quadrado (Cramer V)
+repaid_to_ibrd,0.28,0.00,Point Bisserial
+loan_type_POOL LOAN,0.23,0.00,Chi Quadrado (Cramer V)
+loan_type_SCP USD,0.21,0.00,Chi Quadrado (Cramer V)
+loan_type_SNGL CRNCY,0.20,0.00,Chi Quadrado (Cramer V)
+first_repayment_date_timestamp,-0.24,0.00,Point Bisserial
+original_principal_amount,-0.30,0.00,Point Bisserial
+last_repayment_date_timestamp,-0.33,0.00,Point Bisserial
+closed_date_timestamp,-0.54,0.00,Point Bisserial
+board_approval_date_timestamp,-0.67,0.00,Point Bisserial

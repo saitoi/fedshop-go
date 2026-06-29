@@ -1,0 +1,11 @@
+Objetivos:
+    - Montar a apresentacao_ws_3 (./slides/apresentacao_ws_3/main.typ) seguindo as referencias citadas.
+    - Para montar a apresentacao, precisara estruturar as tabelas finais de metricas do arquivo. Aproveite para estruturar o artigo final com base nas referencias.
+Use como referencia:
+    - [./slides/apresentacao_ws_1/]: Primeira apresentacao do trabalho atual (Web Semantica), algumas coisas se solidificaram desde entao.
+    - [./slides/apresentacao_ws_2/]: Apresentacao mais recente do trabalho atual (Web Semantica), os resultados expandiram desde entao.
+    - [./slides/reference_third_presentation/]: Apresentacao da outra disciplina (Recuperacao da Informacao) com mesmo padrao esperado para a apresentacao de Web Semantica. Baseie-se nessa apresentacao para construir ./slides/apresentacao_ws_3/main.typ
+    - [./slides/projeto-final-ri/]: Artigo final da outra disciplina (Recuperacao da Informacao) com mesmo padrao esperado para artigo de Web Semantica. Baseie-se nesse artigo
+    - [./reference-papers/]: Artigos das query engines de referencias + artigo do FedShop (./reference-papers/fedshop.pdf).
+    - [./reference-repos/]: Repositorios com implementacoes das query engines de referencia + implementacao do fedshop.
+    - [./CLAUDE.md, ./AGENTS.md, ./fedshop-py/PIPELINE_GUIDE.md, ./go-engine/DEBUG-HANDOFF.md, ./go-engine/USER_GUIDE.md]: Guias criados de referencia, podem estar atualizados.
