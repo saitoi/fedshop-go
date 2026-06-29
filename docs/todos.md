@@ -4,7 +4,4 @@
     - [ ] Geracao do dataset
     - [ ] Geracao das consultas
     - [ ] Avaliacao
-- [ ] 
-- [ ] 
-- [ ] 
-- [ ] 
+

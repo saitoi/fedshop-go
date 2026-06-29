@@ -1,0 +1,137 @@
+direction: right
+
+input: {
+  label: "Input\nquery.rq\nconfig_batchN.ttl\nsummary.json?"
+  shape: rectangle
+  style: {
+    fill: "#eff6ff"
+    stroke: "#2563eb"
+    border-radius: 8
+  }
+}
+
+parse: {
+  label: "Parse + config\nSPARQL query\nendpoint services"
+  shape: rectangle
+  style: {
+    fill: "#eff6ff"
+    stroke: "#2563eb"
+    border-radius: 8
+  }
+}
+
+select: {
+  label: "Source selection\nbroadcast · ASK · summary"
+  shape: rectangle
+  style: {
+    fill: "#f0fdf4"
+    stroke: "#16a34a"
+    border-radius: 8
+  }
+}
+
+metadata: {
+  label: "Metadata\npredicate summaries\nendpoint pruning"
+  shape: rectangle
+  style: {
+    fill: "#f0fdf4"
+    stroke: "#16a34a"
+    border-radius: 8
+  }
+}
+
+plan: {
+  label: "Planner\nsource-count / cost\ntriple_order"
+  shape: rectangle
+  style: {
+    fill: "#fff7ed"
+    stroke: "#ea580c"
+    border-radius: 8
+  }
+}
+
+execute: {
+  label: "Executor\nordered BGP\njoins · filters · optional · union"
+  shape: rectangle
+  style: {
+    fill: "#fef2f2"
+    stroke: "#dc2626"
+    border-radius: 8
+  }
+}
+
+fetch: {
+  label: "Remote fetch\nbounded goroutines\nstrict / partial failure"
+  shape: rectangle
+  style: {
+    fill: "#faf5ff"
+    stroke: "#7e22ce"
+    border-radius: 8
+  }
+}
+
+http: {
+  label: "HTTP SPARQL client\nPOST · retry/backoff\nrequest counters"
+  shape: rectangle
+  style: {
+    fill: "#faf5ff"
+    stroke: "#7e22ce"
+    border-radius: 8
+  }
+}
+
+endpoints: {
+  label: "SPARQL endpoints"
+
+  ep1: {
+    label: "endpoint_1"
+    shape: oval
+  }
+
+  ep2: {
+    label: "endpoint_2"
+    shape: oval
+  }
+
+  ep3: {
+    label: "endpoint_3"
+    shape: oval
+  }
+
+  style: {
+    fill: "#faf5ff"
+    stroke: "#7e22ce"
+    border-radius: 8
+  }
+}
+
+output: {
+  label: "FedShop artifacts\nresults.csv\nsource_selection.csv\nquery_plan.txt\nstats.json"
+  shape: rectangle
+  style: {
+    fill: "#f8fafc"
+    stroke: "#475569"
+    border-radius: 8
+  }
+}
+
+input -> parse
+parse -> select
+metadata -> select: "summary"
+select -> plan: "source map"
+metadata -> plan: "cost stats"
+plan -> execute: "triple_order"
+select -> execute: "selected sources"
+execute -> fetch: "SELECT / VALUES"
+fetch -> http
+http -> endpoints.ep1
+http -> endpoints.ep2
+http -> endpoints.ep3
+fetch -> execute: "bindings" {
+  style.stroke-dash: 4
+}
+execute -> output
+
+input -> metadata: "optional summarize" {
+  style.stroke-dash: 4
+}

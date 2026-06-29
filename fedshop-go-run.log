@@ -1,0 +1,123 @@
+❯ ./run-benchmark.sh --engine fedshop-go
+
+══════════════════════════════════════════════════════
+  Docker: start Virtuoso + proxy
+══════════════════════════════════════════════════════
+  $ docker compose -f docker/virtuoso.yml up -d
+WARN[0000] Found orphan containers ([docker-fedshop-proxy-1]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+[+] Running 1/1
+ ✔ Container docker-bsbm-virtuoso-1  Running                                                                                                                                            0.0s
+  $ docker compose -f docker/proxy.yml up -d
+WARN[0000] Found orphan containers ([docker-bsbm-virtuoso-1]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+[+] Running 1/1
+ ✔ Container docker-fedshop-proxy-1  Running                                                                                                                                            0.0s
+  waiting for Virtuoso :8890 ok
+  waiting for proxy :5555 ok
+
+══════════════════════════════════════════════════════
+  Phase 1: generate data
+══════════════════════════════════════════════════════
+  $ uv run fedshop generate products --config config/config_small.yaml
+Products written to /Users/pedrosaito/fedshop-new-engine/fedshop-py/config/../data/product
+  $ uv run fedshop generate sources --config config/config_small.yaml
+All sources generated.
+
+══════════════════════════════════════════════════════
+  Phase 2: ingest batches 0..1
+══════════════════════════════════════════════════════
+  $ uv run fedshop ingest batch 0 --config config/config_small.yaml
+Proxy mapping written to /Users/pedrosaito/fedshop-new-engine/fedshop-py/config/../data/virtuoso-proxy-mapping-batch0.json
+  $ uv run fedshop ingest batch 1 --config config/config_small.yaml
+Proxy mapping written to /Users/pedrosaito/fedshop-new-engine/fedshop-py/config/../data/virtuoso-proxy-mapping-batch1.json
+
+══════════════════════════════════════════════════════
+  Phase 3: generate queries for batches 0..1
+══════════════════════════════════════════════════════
+  $ uv run fedshop query run-all --config config/config_small.yaml --bench-dir benchmark --batch-id 0
+Generated queries for q01
+Generated queries for q02
+Generated queries for q03
+Generated queries for q04
+Generated queries for q05
+Generated queries for q06
+Generated queries for q07
+Generated queries for q08
+Generated queries for q09
+Generated queries for q10
+Generated queries for q11
+Generated queries for q12
+  $ uv run fedshop query run-all --config config/config_small.yaml --bench-dir benchmark --batch-id 1
+Generated queries for q01
+Generated queries for q02
+Generated queries for q03
+Generated queries for q04
+Generated queries for q05
+Generated queries for q06
+Generated queries for q07
+Generated queries for q08
+Generated queries for q09
+Generated queries for q10
+Generated queries for q11
+Generated queries for q12
+
+══════════════════════════════════════════════════════
+  Phase 4: evaluate engines
+══════════════════════════════════════════════════════
+  $ uv run fedshop evaluate prerequisites fedshop-go --config config/config_small.yaml
+  $ uv run fedshop evaluate run-all --config config/config_small.yaml --bench-dir benchmark --engine fedshop-go
+
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q03/instance_0 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q03/instance_0 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q03/instance_1 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q03/instance_1 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+fedshop-go query: select http_www.vendor9.fr: execute SPARQL request: Post "http://localhost:8890/vendor9/sparql": EOF
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:50955->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite1.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite1/sparql": read tcp [::1]:50974->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:50999->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite1.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite1/sparql": read tcp [::1]:51025->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite7.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite7/sparql": read tcp [::1]:51033->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite15.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite15/sparql": read tcp [::1]:51058->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:51077->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite14.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite14/sparql": read tcp [::1]:51096->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:51116->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:51133->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:51153->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:51175->[::1]:8890: read: connection reset by peer
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q08/instance_0 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q08/instance_0 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q08/instance_1 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q08/instance_1 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q09/instance_0 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q09/instance_0 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q09/instance_1 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+/Users/pedrosaito/fedshop-new-engine/fedshop-py/src/fedshop/evaluate.py:125: UserWarning: No injected query for q09/instance_1 (value selection produced no rows), skipping.
+  warnings.warn(f"No injected query for {query_name}/instance_{instance_id} (value selection produced no rows), skipping.")
+fedshop-go query: ASK http_www.ratingsite1.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite1/sparql": read tcp [::1]:51193->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite10.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite10/sparql": read tcp [::1]:51213->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite2.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite2/sparql": read tcp [::1]:51233->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:51261->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite5.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite5/sparql": read tcp [::1]:51276->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:51305->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:51317->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite1.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite1/sparql": read tcp [::1]:51334->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:51354->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite1.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite1/sparql": read tcp [::1]:51384->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:51397->[::1]:8890: read: connection reset by peer
+fedshop-go query: ASK http_www.ratingsite0.fr: execute SPARQL request: Post "http://localhost:8890/ratingsite0/sparql": read tcp [::1]:51414->[::1]:8890: read: connection reset by peer
+
+══════════════════════════════════════════════════════
+  Metrics: compute
+══════════════════════════════════════════════════════
+  $ uv run fedshop metrics compute benchmark/metrics.csv --config config/config_small.yaml --bench-dir benchmark
+Metrics written to benchmark/metrics.csv (104 rows)
