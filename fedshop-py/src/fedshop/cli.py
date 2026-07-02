@@ -142,8 +142,17 @@ def evaluate_prerequisites(engine, config):
     from .engines.fedshop_go import FedShopGoAdapter
     from .engines.fedx import FedXAdapter
     from .engines.pyfedx import PyFedXAdapter
+    from .engines.semagrow import SemagrowAdapter
+    from .engines.splendid import SplendidAdapter
     cfg = _load(config)
-    adapters = {"fedx": FedXAdapter, "pyfedx": PyFedXAdapter, "costfed": CostFedAdapter, "fedshop-go": FedShopGoAdapter}
+    adapters = {
+        "fedx": FedXAdapter,
+        "pyfedx": PyFedXAdapter,
+        "costfed": CostFedAdapter,
+        "fedshop-go": FedShopGoAdapter,
+        "semagrow": SemagrowAdapter,
+        "splendid": SplendidAdapter,
+    }
     if engine not in adapters:
         click.echo(f"Warning: no adapter for engine '{engine}', skipping prerequisites.", err=True)
         return
@@ -221,7 +230,8 @@ def evaluate_run(engine, query_name, instance_id, batch_id, attempt, config, ben
 @click.option("--bench-dir", default=DEFAULT_BENCH_DIR, show_default=True)
 @click.option("--engine", "engine_filter", default=None)
 @click.option("--query", "query_filter", default=None)
-def evaluate_run_all(config, bench_dir, engine_filter, query_filter):
+@click.option("--skip-existing-ok", is_flag=True, default=False, help="Skip cases whose stats.csv is already numeric or timeout.")
+def evaluate_run_all(config, bench_dir, engine_filter, query_filter, skip_existing_ok):
     """Run all (engine, query, instance, batch, attempt) combinations."""
     from .evaluate import run_all_evaluations
     cfg = _load(config)
@@ -230,6 +240,7 @@ def evaluate_run_all(config, bench_dir, engine_filter, query_filter):
         bench_dir=Path(bench_dir),
         engine_filter=engine_filter,
         query_filter=query_filter,
+        skip_existing_ok=skip_existing_ok,
     )
 
 
@@ -258,3 +269,202 @@ def metrics_compute(outfile, provenance_files, config, bench_dir):
 
     df = compute_metrics(cfg, list(provenance_files), outfile)
     click.echo(f"Metrics written to {outfile} ({len(df)} rows)")
+
+
+@metrics.command("typst-tables")
+@click.argument("outfile")
+@click.option("--config", default=DEFAULT_CONFIG, show_default=True)
+@click.option("--bench-dir", default=DEFAULT_BENCH_DIR, show_default=True)
+@click.option("--from-csv", default=None, help="Read from existing metrics CSV instead of recomputing.")
+@click.option("--hypothesis-csv", default=None, help="Include hypothesis-test CSV as a Typst table.")
+@click.option(
+    "--mode",
+    type=click.Choice(["all", "timing", "summary", "correctness", "source-selection", "query-performance", "hypothesis"]),
+    default="all",
+    show_default=True,
+    help="Which Typst table(s) to render.",
+)
+@click.option("--decimals", type=int, default=2, show_default=True, help="Decimal places for numeric values.")
+@click.option("--batch-id", type=int, default=1, show_default=True, help="Batch used by the per-query performance table.")
+@click.option("--hypothesis-top-n", type=int, default=8, show_default=True, help="Maximum hypothesis rows, ranked by median difference.")
+@click.option(
+    "--attempt-policy",
+    type=click.Choice(["all", "primary"]),
+    default="all",
+    show_default=True,
+    help="Aggregate all attempts or only attempt 0.",
+)
+@click.option("--alpha", default=0.05, show_default=True, type=float, help="Significance level used in the hypothesis caption.")
+def metrics_typst_tables(outfile, config, bench_dir, from_csv, hypothesis_csv, mode, decimals, batch_id, hypothesis_top_n, attempt_policy, alpha):
+    """Render publication-ready Typst tables from full metrics."""
+    from .typst_tables import apply_attempt_policy, read_hypothesis, render
+
+    df = _load_metrics_df(config, bench_dir, from_csv)
+    df = apply_attempt_policy(df, attempt_policy)
+    hypothesis_df = read_hypothesis(Path(hypothesis_csv)) if hypothesis_csv else None
+    if mode == "hypothesis" and hypothesis_df is None:
+        raise click.ClickException("--hypothesis-csv is required when --mode hypothesis")
+    output_path = Path(outfile)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        render(
+            df,
+            mode,
+            decimals,
+            batch_id=batch_id,
+            hypothesis_df=hypothesis_df,
+            alpha=alpha,
+            hypothesis_top_n=hypothesis_top_n,
+        )
+    )
+    click.echo(f"Typst tables written to {output_path}")
+
+
+def _load_metrics_df(config: str, bench_dir: str, from_csv: str | None):
+    """Return the full metrics DataFrame, either from a CSV or by recomputing."""
+    import tempfile
+    if from_csv:
+        import pandas as pd
+        return pd.read_csv(from_csv)
+    cfg = _load(config)
+    from .metrics import compute_full_metrics
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+        tmp = f.name
+    return compute_full_metrics(cfg, Path(bench_dir), tmp)
+
+
+def _print_table(df, output: str | None):
+    """Print DataFrame as aligned text table, optionally saving to CSV."""
+    import pandas as pd
+    pd.set_option("display.max_rows", None)
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.width", 200)
+    pd.set_option("display.float_format", "{:.4f}".format)
+    click.echo(df.to_string(index=False))
+    if output:
+        df.to_csv(output, index=False)
+        click.echo(f"\nSaved to {output}", err=True)
+
+
+_ID_COLS = ["engine", "query", "instance", "batch", "attempt", "status"]
+
+_CORRECTNESS_COLS = [
+    "nb_results", "nb_ref_results", "mismatch",
+    "precision", "recall", "f1",
+    "nb_spurious", "nb_missing", "nb_duplicates", "missing_vars",
+]
+
+_SOURCE_SEL_COLS = [
+    "nb_distinct_sources", "relevant_sources_selectivity",
+    "tpwss", "avg_rwss", "min_rwss", "max_rwss",
+]
+
+
+@metrics.command("correctness")
+@click.option("--config", default=DEFAULT_CONFIG, show_default=True)
+@click.option("--bench-dir", default=DEFAULT_BENCH_DIR, show_default=True)
+@click.option("--from-csv", default=None, help="Read from existing metrics CSV instead of recomputing.")
+@click.option("--output", default=None, help="Also save the table to this CSV path.")
+@click.option("--engine", "engine_filter", default=None, help="Filter to a specific engine.")
+@click.option("--query", "query_filter", default=None, help="Filter to a specific query.")
+def metrics_correctness(config, bench_dir, from_csv, output, engine_filter, query_filter):
+    """Print correctness table: precision, recall, f1, spurious/missing rows, duplicates, missing vars."""
+    df = _load_metrics_df(config, bench_dir, from_csv)
+    if engine_filter:
+        df = df[df["engine"] == engine_filter]
+    if query_filter:
+        df = df[df["query"] == query_filter]
+    cols = [c for c in _ID_COLS if c in df.columns] + [c for c in _CORRECTNESS_COLS if c in df.columns]
+    df = df[cols].sort_values([c for c in ["engine", "query", "batch", "instance"] if c in df.columns])
+    _print_table(df, output)
+
+
+@metrics.command("hypothesis-test")
+@click.option("--config", default=DEFAULT_CONFIG, show_default=True)
+@click.option("--bench-dir", default=DEFAULT_BENCH_DIR, show_default=True)
+@click.option("--from-csv", default=None, help="Read from existing metrics CSV instead of recomputing.")
+@click.option("--output", default=None, help="Also save the results table to this CSV path.")
+@click.option("--target-engine", default="fedshop-go", show_default=True, help="Focal engine for Wilcoxon comparisons.")
+@click.option("--alpha", default=0.05, show_default=True, type=float, help="Significance level.")
+@click.option("--skip-friedman", is_flag=True, default=False, help="Skip Friedman test (useful when < 3 engines).")
+@click.option("--engine", "engine_filter", default=None, help="Keep only rows matching this engine (applied before tests).")
+@click.option("--query", "query_filter", default=None, help="Keep only rows matching this query (applied before tests).")
+def metrics_hypothesis_test(config, bench_dir, from_csv, output, target_engine, alpha, skip_friedman, engine_filter, query_filter):
+    """Run statistical hypothesis tests comparing engines.
+
+    \b
+    Wilcoxon signed-rank  — target_engine vs each other engine, paired by
+                             (query, instance, batch). Holm correction applied
+                             across engines per metric.
+    Friedman              — all engines together per metric (blocked by same key).
+    Spearman ρ            — batch_id vs metric per engine (scalability).
+    """
+    from .hypothesis import run_hypothesis_tests
+    df = _load_metrics_df(config, bench_dir, from_csv)
+    if engine_filter:
+        df = df[df["engine"].isin([target_engine, engine_filter])]
+    if query_filter:
+        df = df[df["query"] == query_filter]
+    results = run_hypothesis_tests(
+        df,
+        target_engine=target_engine,
+        alpha=alpha,
+        skip_friedman=skip_friedman,
+    )
+    if results.empty:
+        click.echo("No results — not enough paired observations.", err=True)
+        return
+    _print_table(results, output)
+
+
+@metrics.command("source-selection")
+@click.option("--config", default=DEFAULT_CONFIG, show_default=True)
+@click.option("--bench-dir", default=DEFAULT_BENCH_DIR, show_default=True)
+@click.option("--from-csv", default=None, help="Read from existing metrics CSV instead of recomputing.")
+@click.option("--output", default=None, help="Also save the table to this CSV path.")
+@click.option("--engine", "engine_filter", default=None, help="Filter to a specific engine.")
+@click.option("--query", "query_filter", default=None, help="Filter to a specific query.")
+def metrics_source_selection(config, bench_dir, from_csv, output, engine_filter, query_filter):
+    """Print source-selection table: distinct sources, selectivity, tpwss, rwss stats."""
+    df = _load_metrics_df(config, bench_dir, from_csv)
+    if engine_filter:
+        df = df[df["engine"] == engine_filter]
+    if query_filter:
+        df = df[df["query"] == query_filter]
+    cols = [c for c in _ID_COLS if c in df.columns] + [c for c in _SOURCE_SEL_COLS if c in df.columns]
+    df = df[cols].sort_values([c for c in ["engine", "query", "batch", "instance"] if c in df.columns])
+    _print_table(df, output)
+
+
+@metrics.command("plot-pr")
+@click.option("--config", default=DEFAULT_CONFIG, show_default=True)
+@click.option("--bench-dir", default=DEFAULT_BENCH_DIR, show_default=True)
+@click.option("--from-csv", default=None, help="Read from existing metrics CSV instead of recomputing.")
+@click.option("--output", default=None, help="Save figure to this path (PNG/PDF/SVG). If omitted, opens a window.")
+@click.option("--engine", "engine_filter", default=None, help="Filter to a specific engine.")
+@click.option("--query", "query_filter", default=None, help="Filter to a specific query.")
+@click.option("--title", default="Precision × Recall", show_default=True)
+@click.option("--annotate", is_flag=True, default=False, help="Label each point with its query name.")
+@click.option("--f1-levels", default="0.25,0.5,0.75", show_default=True,
+              help="Comma-separated F1 iso-curve levels to draw.")
+def metrics_plot_pr(config, bench_dir, from_csv, output, engine_filter, query_filter, title, annotate, f1_levels):
+    """Plot precision vs recall with filled area under the curve per engine.
+
+    Each point is one (engine, query, instance, batch) observation. Points are
+    sorted by recall and connected; the area below is filled. F1 iso-curves are
+    drawn as dashed reference lines.
+    """
+    from .plot import plot_precision_recall
+    df = _load_metrics_df(config, bench_dir, from_csv)
+    if engine_filter:
+        df = df[df["engine"] == engine_filter]
+    if query_filter:
+        df = df[df["query"] == query_filter]
+    levels = [float(x.strip()) for x in f1_levels.split(",") if x.strip()]
+    try:
+        plot_precision_recall(df, output=output, title=title, f1_levels=levels, annotate_queries=annotate)
+    except ValueError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1)
+    if output:
+        click.echo(f"Plot saved to {output}")

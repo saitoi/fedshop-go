@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 from io import StringIO
 from pathlib import Path
@@ -44,20 +45,64 @@ class SemagrowAdapter(EngineAdapter):
         )
         super().__init__(config, engine_dir)
 
+    @staticmethod
+    def _maven_settings_path() -> str:
+        """Write a temp settings.xml that redirects the dead maven.tinyjee.org plugin repo.
+
+        Maven 3.8+ blocks HTTP plugin repositories by default. The semagrow root pom.xml
+        declares maven.tinyjee.org (dead, HTTP-only) for aspectj-maven-plugin used by the
+        monitor module. Redirecting it to Maven Central lets the build succeed without
+        touching the submodule sources.
+        """
+        settings_xml = (
+            '<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"'
+            ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+            ' xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0'
+            ' http://maven.apache.org/xsd/settings-1.0.0.xsd">\n'
+            "  <mirrors>\n"
+            "    <mirror>\n"
+            "      <id>tinyjee-to-central</id>\n"
+            "      <url>https://repo1.maven.org/maven2</url>\n"
+            "      <mirrorOf>maven.tinyjee.org</mirrorOf>\n"
+            "    </mirror>\n"
+            "  </mirrors>\n"
+            "</settings>\n"
+        )
+        fd, path = tempfile.mkstemp(suffix=".xml", prefix="semagrow-mvn-settings-")
+        with os.fdopen(fd, "w") as f:
+            f.write(settings_xml)
+        return path
+
     def prerequisites(self) -> None:
         old_cwd = os.getcwd()
-        # Semagrow: build only the modules needed to run the CLI (http-endpoint and webgui require
-        # old war plugin incompatible with Java 21).
-        os.chdir(self.engine_dir.resolve())
-        cmd = "mvn install dependency:copy-dependencies package -Dmaven.test.skip=true --projects commons,core-api,monitor,core,sparql,rdf4j -am"
-        if os.system(cmd) != 0:
-            raise RuntimeError(f"Could not compile semagrow at {self.engine_dir}")
-        # sevod-scraper: build only commons, sparql, cli (rdfdump-spark requires Scala).
-        os.chdir(self.summary_generator_dir.resolve())
-        cmd = "mvn install dependency:copy-dependencies package -Dmaven.test.skip=true --projects commons,sparql,cli -am"
-        if os.system(cmd) != 0:
-            raise RuntimeError(f"Could not compile sevod-scraper at {self.summary_generator_dir}")
-        os.chdir(old_cwd)
+        settings = self._maven_settings_path()
+        try:
+            # Semagrow: build only the modules needed to run the CLI.
+            # http-endpoint and webgui require old war plugin incompatible with Java 21.
+            # monitor uses aspectj-maven-plugin from the dead maven.tinyjee.org repo;
+            # the temp settings.xml above redirects it to Maven Central.
+            os.chdir(self.engine_dir.resolve())
+            cmd = (
+                f"mvn install dependency:copy-dependencies package"
+                f" -Dmaven.test.skip=true -Daspectj.skip=true"
+                f" --projects commons,core-api,monitor,core,sparql,rdf4j -am"
+                f" -s {settings}"
+            )
+            if os.system(cmd) != 0:
+                raise RuntimeError(f"Could not compile semagrow at {self.engine_dir}")
+            # sevod-scraper: build only commons, sparql, cli (rdfdump-spark requires Scala).
+            os.chdir(self.summary_generator_dir.resolve())
+            cmd = (
+                f"mvn install dependency:copy-dependencies package"
+                f" -Dmaven.test.skip=true"
+                f" --projects commons,sparql,cli -am"
+                f" -s {settings}"
+            )
+            if os.system(cmd) != 0:
+                raise RuntimeError(f"Could not compile sevod-scraper at {self.summary_generator_dir}")
+        finally:
+            os.unlink(settings)
+            os.chdir(old_cwd)
 
     def generate_config_file(self, batch_id: int, proxy_mapping: dict[str, str]) -> Path:
         summary_file = (self.engine_dir / f"summaries/metadata-fedshop-batch{batch_id}.ttl").resolve()
@@ -65,42 +110,39 @@ class SemagrowAdapter(EngineAdapter):
 
         summary_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write Turtle repository config if absent or stale
-        can_create_repo = False
-        if repo_file.exists():
-            if str(summary_file) not in repo_file.read_text():
-                can_create_repo = True
-        else:
-            can_create_repo = True
+        # SemagrowSailFactory.initializeMetadata() loads the metadata file via new File(filename).
+        # That resolves relative paths against the JVM's CWD, not via FileUtils. Write the absolute
+        # path so the JVM can find the file regardless of CWD.
+        metadata_name = str(summary_file)
 
-        if can_create_repo:
-            repo_file.write_text(
-                "################################################################################\n"
-                "# Sesame configuration for SemaGrow\n"
-                "#\n"
-                "# ATTENTION: the Sail implementing the sail:sailType must be published\n"
-                "#            in META-INF/services/org.openrdf.sail.SailFactory\n"
-                "################################################################################\n"
-                "@prefix void: <http://rdfs.org/ns/void#>.\n"
-                "@prefix rep:  <http://www.openrdf.org/config/repository#>.\n"
-                "@prefix sr:   <http://www.openrdf.org/config/repository/sail#>.\n"
-                "@prefix sail: <http://www.openrdf.org/config/sail#>.\n"
-                "@prefix semagrow: <http://schema.semagrow.eu/>.\n"
-                "@prefix quetsal: <http://quetsal.aksw.org/>.\n"
-                "\n"
-                "[] a rep:Repository ;\n"
-                "\trep:repositoryTitle \"SemaGrow Repository\" ;\n"
-                "\trep:repositoryID \"semagrow\" ;\n"
-                "\trep:repositoryImpl [\n"
-                "\t\trep:repositoryType \"semagrow:SemagrowRepository\" ;\n"
-                "\t\tsr:sailImpl [\n"
-                "\t\t\tsail:sailType \"semagrow:SemagrowSail\" ;\n"
-                f"\t\t\tsemagrow:metadataInit \"{summary_file}\" ;\n"
-                "\t\t\tsemagrow:executorBatchSize \"8\" ;\n"
-                "\t\t\tsemagrow:sourceSelectors \"PREFIX\"\n"
-                "\t\t]\n"
-                "\t] ."
-            )
+        # Always regenerate repo_file so it uses metadata_name (not an old absolute path)
+        repo_file.write_text(
+            "################################################################################\n"
+            "# Sesame configuration for SemaGrow\n"
+            "#\n"
+            "# ATTENTION: the Sail implementing the sail:sailType must be published\n"
+            "#            in META-INF/services/org.openrdf.sail.SailFactory\n"
+            "################################################################################\n"
+            "@prefix void: <http://rdfs.org/ns/void#>.\n"
+            "@prefix rep:  <http://www.openrdf.org/config/repository#>.\n"
+            "@prefix sr:   <http://www.openrdf.org/config/repository/sail#>.\n"
+            "@prefix sail: <http://www.openrdf.org/config/sail#>.\n"
+            "@prefix semagrow: <http://schema.semagrow.eu/>.\n"
+            "@prefix quetsal: <http://quetsal.aksw.org/>.\n"
+            "\n"
+            "[] a rep:Repository ;\n"
+            "\trep:repositoryTitle \"SemaGrow Repository\" ;\n"
+            "\trep:repositoryID \"semagrow\" ;\n"
+            "\trep:repositoryImpl [\n"
+            "\t\trep:repositoryType \"semagrow:SemagrowRepository\" ;\n"
+            "\t\tsr:sailImpl [\n"
+            "\t\t\tsail:sailType \"semagrow:SemagrowSail\" ;\n"
+            f"\t\t\tsemagrow:metadataInit \"{metadata_name}\" ;\n"
+            "\t\t\tsemagrow:executorBatchSize \"8\" ;\n"
+            "\t\t\tsemagrow:sourceSelectors \"PREFIX\"\n"
+            "\t\t]\n"
+            "\t] ."
+        )
 
         # Generate summary if absent or any endpoint is missing from it
         update_summary = False
@@ -197,11 +239,9 @@ class SemagrowAdapter(EngineAdapter):
 
         summary_file = (self.engine_dir / f"summaries/metadata-fedshop-batch{batch_id}.ttl").resolve()
         repo_file = (self.engine_dir / f"summaries/repo-fedshop-batch{batch_id}.ttl").resolve()
-        tmp_results = out_result.with_suffix(".csv")
+        tmp_results = Path(tempfile.mktemp(suffix=".csv", prefix="semagrow_"))
 
         proxy_cfg = self.config.evaluation.proxy
-        proxy_host = proxy_cfg.host
-        proxy_port = proxy_cfg.port
         timeout = self.config.evaluation.timeout
 
         if proxy_client is None:
@@ -211,62 +251,83 @@ class SemagrowAdapter(EngineAdapter):
         _wait_virtuoso(f"http://localhost:{virt_port}/sparql")
         proxy_client.reset()
 
-        noexec_flag = "--noexec" if noexec else ""
-        timeout_cmd = f"timeout --signal=SIGKILL {timeout}" if timeout != 0 else ""
+        # FileUtils.getFile("repository.ttl") checks /tmp/repository.ttl before the classloader.
+        # The metadata path is written as an absolute path in repository.ttl, so it's loaded
+        # via new File(absolutePath) directly — no /tmp copy needed for metadata.
+        tmp_repo = Path("/tmp/repository.ttl")
+        shutil.copy(repo_file, tmp_repo)
 
         # Resolve to absolute paths before any os.chdir
         tmp_results_abs = tmp_results.resolve()
         out_result_abs = out_result.resolve()
         query_path_abs = query_path.resolve()
+        stats_abs = stats if str(stats) == "/dev/null" else stats.resolve()
+        base = stats_abs.parent
+        base.mkdir(parents=True, exist_ok=True)
 
-        cmd = (
-            f'{timeout_cmd} mvn exec:java '
-            f'-Dhttp.proxyHost="{proxy_host}" '
-            f'-Dhttp.proxyPort="{proxy_port}" '
-            f'-Dhttp.nonProxyHosts="host.docker.internal|localhost|127.0.0.1" '
-            f'-pl "rdf4j/" '
-            f'-Dexec.mainClass="org.semagrow.cli.CliMain" '
-            f'-Dexec.args="--query {query_path_abs} '
-            f'--output {tmp_results_abs} '
-            f'--config {repo_file} '
-            f'--metadata {summary_file} {noexec_flag}"'
-        ).strip()
+        # CliMain takes positional args: args[0]=config_path args[1]=SPARQL_text args[2]=output_path
+        # We use java -cp directly to avoid Maven overhead and control the classpath precisely.
+        cp = (
+            "rdf4j/target/classes:"
+            "core/target/classes:"
+            "core-api/target/classes:"
+            "commons/target/classes:"
+            "sparql/target/classes:"
+            "rdf4j/target/dependency/*"
+        )
+        query_text = query_path_abs.read_text()
 
-        # Semagrow also reads repository.ttl and metadata.ttl from CWD
-        shutil.copy(repo_file, self.engine_dir / "repository.ttl")
-        shutil.copy(summary_file, self.engine_dir / "metadata.ttl")
+        # Do not set http.proxyHost/proxyPort: Semagrow's Apache HttpClient hangs when a
+        # system proxy is configured (even with nonProxyHosts), while endpoints bypass the
+        # proxy anyway (host.docker.internal in nonProxyHosts → NB_HTTP_REQ=0 like FedX).
+        java_args = [
+            "java",
+            "-Xmx2g",
+            "-Dhttp.keepAlive=false",
+            "-cp", cp,
+            "org.semagrow.cli.CliMain",
+            "repository.ttl",   # args[0]: logged; resolver reads /tmp/repository.ttl via FileUtils
+            query_text,          # args[1]: SPARQL query text (not file path)
+            str(tmp_results_abs),  # args[2]: output file path
+        ]
 
         old_cwd = os.getcwd()
         os.chdir(self.engine_dir)
 
         t_start = time.time()
+        log_handle = None
+        stdout_target = subprocess.DEVNULL
+        if str(stats_abs) != "/dev/null":
+            log_handle = (base / "engine.log").open("wb")
+            stdout_target = log_handle
         proc = subprocess.Popen(
-            cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            java_args, stdout=stdout_target, stderr=subprocess.STDOUT
         )
         failed_reason: str | None = None
 
         try:
             proc.wait(timeout)
-            if proc.returncode == 0:
+            if proc.returncode == 0 and tmp_results_abs.exists() and tmp_results_abs.stat().st_size > 0:
                 shutil.copy(tmp_results_abs, out_result_abs)
-            else:
+            elif proc.returncode != 0:
                 failed_reason = "error_runtime"
         except subprocess.TimeoutExpired:
             failed_reason = "timeout"
         finally:
-            os.system('pkill -9 -f "mainClass=org.semagrow.cli.CliMain"')
+            os.system("pkill -9 -f 'org.semagrow.cli.CliMain'")
+            if log_handle is not None:
+                log_handle.close()
 
         exec_time = time.time() - t_start
         os.chdir(old_cwd)
 
-        if str(stats) != "/dev/null":
+        if str(stats_abs) != "/dev/null":
             proxy_stats = proxy_client.get_stats()
-            base = stats.parent
             (base / "exec_time.txt").write_text(str(exec_time))
             (base / "http_req.txt").write_text(str(proxy_stats.get("NB_HTTP_REQ", 0)))
             (base / "ask.txt").write_text(str(proxy_stats.get("NB_ASK", 0)))
             (base / "data_transfer.txt").write_text(str(proxy_stats.get("DATA_TRANSFER", 0)))
-            self._write_stats(stats, failed_reason)
+            self._write_stats(stats_abs, failed_reason)
 
     def _write_stats(self, stats_path: Path, failed_reason: str | None) -> None:
         m = re.match(
@@ -300,12 +361,12 @@ class SemagrowAdapter(EngineAdapter):
         pd.DataFrame([row]).to_csv(stats_path, index=False)
 
     def transform_results(self, infile: Path, outfile: Path) -> None:
-        if infile.stat().st_size == 0:
-            outfile.touch()
-        else:
+        try:
             df = pd.read_csv(infile)
             df.drop_duplicates(inplace=True)
             df.to_csv(outfile, index=False)
+        except (pd.errors.EmptyDataError, ValueError):
+            outfile.touch()
 
     def transform_provenance(
         self,

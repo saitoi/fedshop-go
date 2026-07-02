@@ -167,15 +167,22 @@ class PyFedXAdapter(EngineAdapter):
         def _v(key: str, default=None):
             return pyfedx_stats.get(key, default)
 
+        total_s = _v("total_seconds", exec_time)
+        ss_s = _v("source_selection_seconds", 0.0)
+        plan_s = _v("planning_seconds", 0.0)
+        exec_s = _v("execution_seconds")  # present in fedshop-go JSON; absent in pyfedx JSON
+        join_s = exec_s if exec_s is not None else max(0.0, total_s - ss_s - plan_s)
+
         row: dict = {
             "engine": m.group(1),
             "query": m.group(2),
             "instance": m.group(3),
             "batch": m.group(4),
             "attempt": m.group(5),
-            "exec_time": failed_reason if failed_reason else _v("total_seconds", exec_time),
-            "source_selection_time": failed_reason if failed_reason else _v("source_selection_seconds", 0.0),
-            "planning_time": failed_reason if failed_reason else _v("planning_seconds", 0.0),
+            "exec_time": failed_reason if failed_reason else total_s,
+            "source_selection_time": failed_reason if failed_reason else ss_s,
+            "planning_time": failed_reason if failed_reason else plan_s,
+            "join_time": failed_reason if failed_reason else join_s,
             "ask": failed_reason if failed_reason else _v("ask", 0),
             "http_req": failed_reason if failed_reason else _v("http_requests", proxy_stats.get("NB_HTTP_REQ", 0)),
             "data_transfer": failed_reason if failed_reason else _v("data_transfer", proxy_stats.get("DATA_TRANSFER", 0)),

@@ -40,11 +40,21 @@ class SplendidAdapter(EngineAdapter):
         sources_file = Path("/tmp/splendid-sources.txt")
         with open(sources_file, "w") as f:
             for src in (self.engine_dir / "src").rglob("*.java"):
+                if "/test/" in src.as_posix() and "/test/config/" not in src.as_posix():
+                    continue
                 f.write(str(src) + "\n")
         classpath = ":".join(str(j) for j in (self.engine_dir / "lib").glob("*.jar"))
         cmd = f"javac -cp '{classpath}' -d '{bin_dir}' -source 8 -target 8 @{sources_file}"
         if os.system(cmd) != 0:
             raise RuntimeError("Could not compile SPLENDID")
+        services_dir = bin_dir / "META-INF" / "services"
+        services_dir.mkdir(parents=True, exist_ok=True)
+        (services_dir / "org.openrdf.sail.config.SailFactory").write_text(
+            "de.uni_koblenz.west.splendid.config.FederationSailFactory\n"
+        )
+        (services_dir / "org.openrdf.repository.config.RepositoryFactory").write_text(
+            "de.uni_koblenz.west.splendid.config.VoidRepositoryFactory\n"
+        )
 
     def _domain_from_iri(self, iri: str) -> str:
         host = iri.split("//")[-1].rstrip("/")
@@ -250,15 +260,20 @@ class SplendidAdapter(EngineAdapter):
             return
 
         # SPLENDID: java <config> <query> — outputs SPARQL JSON to stdout
-        timeout_cmd = f"timeout --signal=SIGKILL {timeout}" if timeout != 0 else ""
-        cmd = f"{timeout_cmd} ./SPLENDID.sh {void_conf} {query_path_abs}"
+        cmd = f"./SPLENDID.sh {void_conf} {query_path_abs}"
 
+        stats_abs = stats.resolve()
         old_cwd = os.getcwd()
         os.chdir(self.engine_dir)
 
         t_start = time.time()
+        stderr_log = None
+        stderr_target = subprocess.DEVNULL
+        if str(stats) != "/dev/null":
+            stderr_log = open(stats_abs.parent / "engine.log", "wb")
+            stderr_target = stderr_log
         proc = subprocess.Popen(
-            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=stderr_target
         )
         stdout_data = b""
         failed_reason: str | None = None
@@ -276,6 +291,8 @@ class SplendidAdapter(EngineAdapter):
             failed_reason = "timeout"
         finally:
             os.system('pkill -9 -f "de.uni_koblenz.west.splendid.SPLENDID"')
+            if stderr_log is not None:
+                stderr_log.close()
 
         exec_time = time.time() - t_start
         os.chdir(old_cwd)
@@ -329,7 +346,7 @@ class SplendidAdapter(EngineAdapter):
             "batch": m.group(4),
             "attempt": m.group(5),
         }
-        for metric in ["exec_time", "source_selection_time", "planning_time", "ask", "http_req", "data_transfer"]:
+        for metric in ["exec_time", "source_selection_time", "planning_time", "join_time", "ask", "http_req", "data_transfer"]:
             if metric == "exec_time" and failed_reason is not None:
                 row[metric] = failed_reason
                 continue

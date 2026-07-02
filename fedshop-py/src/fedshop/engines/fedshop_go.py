@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -26,10 +27,19 @@ class FedShopGoAdapter(PyFedXAdapter):
 
     @property
     def binary(self) -> Path:
+        binary = self.options.get("binary")
+        if binary:
+            return Path(binary)
         return self.engine_dir / "fedshop-go"
 
     def prerequisites(self) -> None:
         self.engine_dir.mkdir(parents=True, exist_ok=True)
+        if shutil.which("go") is None:
+            if self.binary.exists():
+                return
+            raise RuntimeError(
+                f"go toolchain not found and configured fedshop-go binary does not exist: {self.binary}"
+            )
         env = os.environ.copy()
         env["GOCACHE"] = str(self.engine_dir / ".gocache")
         subprocess.run(
@@ -108,7 +118,10 @@ class FedShopGoAdapter(PyFedXAdapter):
         ]
         if self.options.get("http_proxy"):
             command.extend(["--http-proxy", str(self.options["http_proxy"])])
-        if self.options.get("exclusive_groups", "true").lower() == "true":
+        exclusive_groups = self.options.get("exclusive_groups", True)
+        if isinstance(exclusive_groups, str):
+            exclusive_groups = exclusive_groups.lower() == "true"
+        if exclusive_groups:
             command.append("--exclusive-groups")
         if self.options.get("post_bind_max_input_rows") is not None:
             command.extend(["--post-bind-max-input-rows", str(self.options["post_bind_max_input_rows"])])

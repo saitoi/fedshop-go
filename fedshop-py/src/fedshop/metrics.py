@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -42,11 +44,9 @@ def _parse_path(provenance_file: str) -> dict | None:
     }
 
 
-def _get_rwss(df: pd.DataFrame, agg: str, is_evaluation_mode: bool):
-    if is_evaluation_mode:
-        return None
+def _get_rwss(df: pd.DataFrame, agg: str) -> float:
     result = df.apply(pd.Series.nunique, axis=1).describe()
-    return result[agg]
+    return float(result[agg])
 
 
 def _get_tpwss(df: pd.DataFrame) -> float:
@@ -55,6 +55,53 @@ def _get_tpwss(df: pd.DataFrame) -> float:
 
 def _get_distinct_sources(df: pd.DataFrame) -> int:
     return int(pd.Series(df.values.flatten()).nunique())
+
+
+def _parse_source_selection(ss_file: Path) -> list[set[str]]:
+    """Return selected endpoints per TP (ordered), parsed from source_selection.txt."""
+    if not ss_file.exists() or ss_file.stat().st_size == 0:
+        return []
+    try:
+        df = pd.read_csv(ss_file)
+        result = []
+        for _, row in df.iterrows():
+            raw = row.get("source_selection", "[]")
+            try:
+                endpoints = set(json.loads(raw))
+            except (ValueError, TypeError):
+                endpoints = set()
+            result.append(endpoints)
+        return result
+    except Exception:
+        return []
+
+
+def _get_false_positive_sources(ss_file: Path, prov_df: pd.DataFrame) -> int:
+    """Count endpoints selected but absent from every result row in provenance."""
+    selected_per_tp = _parse_source_selection(ss_file)
+    if not selected_per_tp:
+        return 0
+    all_selected = set().union(*selected_per_tp)
+    flat = prov_df.values.flatten()
+    contributing = {v for v in flat if isinstance(v, str) and v.strip()}
+    return len(all_selected - contributing)
+
+
+def _get_redundant_requests(ss_file: Path, prov_df: pd.DataFrame) -> int:
+    """Count (TP-index, endpoint) pairs selected but absent from provenance result rows."""
+    selected_per_tp = _parse_source_selection(ss_file)
+    if not selected_per_tp:
+        return 0
+    selected_pairs: set[tuple[int, str]] = set()
+    for tp_idx, endpoints in enumerate(selected_per_tp):
+        for ep in endpoints:
+            selected_pairs.add((tp_idx, ep))
+    contributing_pairs: set[tuple[int, str]] = set()
+    for tp_idx, col in enumerate(prov_df.columns):
+        for v in prov_df[col]:
+            if isinstance(v, str) and v.strip():
+                contributing_pairs.add((tp_idx, v))
+    return len(selected_pairs - contributing_pairs)
 
 
 def _attempt_status(stats_file: Path) -> str:
@@ -152,6 +199,81 @@ def _mismatch(results_csv: Path, ref_csv: Path) -> bool | None:
         return None
 
 
+_CORRECTNESS_NAN: dict = {
+    "precision": np.nan,
+    "recall": np.nan,
+    "f1": np.nan,
+    "nb_spurious": np.nan,
+    "nb_missing": np.nan,
+    "nb_duplicates": np.nan,
+    "missing_vars": np.nan,
+}
+
+
+def _compare_results(results_csv: Path, ref_csv: Path) -> dict:
+    """Row-level correctness metrics between engine output and reference.
+
+    Returns precision, recall, f1, nb_spurious, nb_missing, nb_duplicates,
+    missing_vars. All values are np.nan when the reference is absent or an
+    exception occurs.
+    """
+    if not ref_csv.exists():
+        return dict(_CORRECTNESS_NAN)
+    try:
+        ref_df = pd.read_csv(ref_csv) if ref_csv.stat().st_size > 0 else pd.DataFrame()
+        if not results_csv.exists() or results_csv.stat().st_size == 0:
+            eng_df = pd.DataFrame()
+        else:
+            eng_df = pd.read_csv(results_csv)
+
+        ref_cols = set(ref_df.columns) if not ref_df.empty else set()
+        eng_cols = set(eng_df.columns) if not eng_df.empty else set()
+        missing_vars = int(len(ref_cols - eng_cols))
+
+        nb_duplicates = int(len(eng_df) - len(eng_df.drop_duplicates())) if not eng_df.empty else 0
+
+        nb_eng = len(eng_df)
+        nb_ref = len(ref_df)
+
+        cols = sorted(ref_df.columns) if not ref_df.empty else []
+        shared_cols = [c for c in cols if c in eng_cols]
+
+        if not cols or len(shared_cols) < len(cols):
+            intersection = 0
+        else:
+            ref_norm = ref_df[cols].astype(str).apply(lambda col: col.map(_normalize_cell))
+            eng_norm = eng_df[cols].astype(str).apply(lambda col: col.map(_normalize_cell))
+            ref_counts: Counter = Counter(map(tuple, ref_norm.itertuples(index=False, name=None)))
+            eng_counts: Counter = Counter(map(tuple, eng_norm.itertuples(index=False, name=None)))
+            intersection = sum((ref_counts & eng_counts).values())
+
+        nb_spurious = nb_eng - intersection
+        nb_missing = nb_ref - intersection
+
+        precision = intersection / nb_eng if nb_eng > 0 else (1.0 if nb_ref == 0 else np.nan)
+        recall = intersection / nb_ref if nb_ref > 0 else (1.0 if nb_eng == 0 else np.nan)
+        p_r_sum = (precision if not np.isnan(precision) else 0) + (recall if not np.isnan(recall) else 0)
+        f1: float
+        if np.isnan(precision) and np.isnan(recall):
+            f1 = np.nan
+        elif p_r_sum == 0:
+            f1 = 0.0
+        else:
+            f1 = 2 * (precision if not np.isnan(precision) else 0) * (recall if not np.isnan(recall) else 0) / p_r_sum
+
+        return {
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "nb_spurious": nb_spurious,
+            "nb_missing": nb_missing,
+            "nb_duplicates": nb_duplicates,
+            "missing_vars": missing_vars,
+        }
+    except Exception:
+        return dict(_CORRECTNESS_NAN)
+
+
 def compute_full_metrics(
     config: BenchmarkConfig,
     bench_dir: "Path | str",
@@ -197,9 +319,13 @@ def compute_full_metrics(
         nb_res = _count_rows(results_csv) if status == "ok" else np.nan
         nb_ref = _count_rows(ref_csv)
         mm = _mismatch(results_csv, ref_csv) if status == "ok" else None
+        correctness = _compare_results(results_csv, ref_csv) if status == "ok" else dict(_CORRECTNESS_NAN)
 
         tpwss = nb_distinct = rel_sel = np.nan
+        avg_rwss = min_rwss = max_rwss = np.nan
+        false_positive_sources = redundant_requests = np.nan
         prov = base / "provenance.csv"
+        ss_file = base / "source_selection.txt"
         if status == "ok" and prov.exists() and prov.stat().st_size > 0:
             try:
                 prov_df = pd.read_csv(prov)
@@ -207,6 +333,11 @@ def compute_full_metrics(
                     nb_distinct = _get_distinct_sources(prov_df)
                     rel_sel = nb_distinct / total_sources
                     tpwss = _get_tpwss(prov_df)
+                    avg_rwss = _get_rwss(prov_df, "mean")
+                    min_rwss = _get_rwss(prov_df, "min")
+                    max_rwss = _get_rwss(prov_df, "max")
+                    false_positive_sources = _get_false_positive_sources(ss_file, prov_df)
+                    redundant_requests = _get_redundant_requests(ss_file, prov_df)
             except Exception:
                 pass
 
@@ -220,15 +351,28 @@ def compute_full_metrics(
             "nb_results": nb_res,
             "nb_ref_results": nb_ref,
             "mismatch": mm,
+            "precision": correctness["precision"],
+            "recall": correctness["recall"],
+            "f1": correctness["f1"],
+            "nb_spurious": correctness["nb_spurious"],
+            "nb_missing": correctness["nb_missing"],
+            "nb_duplicates": correctness["nb_duplicates"],
+            "missing_vars": correctness["missing_vars"],
             "exec_time": exec_time,
             "source_selection_time": _f("source_selection_time"),
             "planning_time": _f("planning_time"),
+            "join_time": _f("join_time"),
             "ask": _f("ask"),
             "http_req": _f("http_req"),
             "data_transfer": _f("data_transfer"),
             "tpwss": tpwss,
+            "avg_rwss": avg_rwss,
+            "min_rwss": min_rwss,
+            "max_rwss": max_rwss,
             "nb_distinct_sources": nb_distinct,
             "relevant_sources_selectivity": rel_sel,
+            "false_positive_sources": false_positive_sources,
+            "redundant_requests": redundant_requests,
             "is_timeout": status == "timeout",
             "is_error": status == "error_runtime",
         })
@@ -303,9 +447,9 @@ def compute_metrics(
                 "nb_distinct_sources": distinct,
                 "relevant_sources_selectivity": distinct / total_nb_sources,
                 "tpwss": _get_tpwss(ss_df),
-                "avg_rwss": _get_rwss(ss_df, "mean", is_evaluation_mode),
-                "min_rwss": _get_rwss(ss_df, "min", is_evaluation_mode),
-                "max_rwss": _get_rwss(ss_df, "max", is_evaluation_mode),
+                "avg_rwss": _get_rwss(ss_df, "mean"),
+                "min_rwss": _get_rwss(ss_df, "min"),
+                "max_rwss": _get_rwss(ss_df, "max"),
             })
 
         records.append(record)

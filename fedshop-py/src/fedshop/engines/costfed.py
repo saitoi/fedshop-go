@@ -143,9 +143,8 @@ class CostFedAdapter(EngineAdapter):
             endpoints_file,
         ])
 
-        timeout_cmd = f"timeout --signal=SIGKILL {timeout}" if timeout != 0 else ""
         cmd = (
-            f'{timeout_cmd} mvn exec:java '
+            f'mvn exec:java '
             f'-Dhttp.proxyHost="{proxy_host}" '
             f'-Dhttp.proxyPort="{proxy_port}" '
             f'-Dhttp.nonProxyHosts="host.docker.internal|localhost|127.0.0.1" '

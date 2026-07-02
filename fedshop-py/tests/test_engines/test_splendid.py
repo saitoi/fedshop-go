@@ -123,16 +123,38 @@ def test_transform_provenance_multiple_sources(config_small, tmp_path):
 def test_generate_void_description_writes_n3_file(config_small, tmp_path):
     adapter = make_adapter(tmp_path, config_small)
 
-    nt_content = (
-        "<http://www.vendor0.fr/offer1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://purl.org/goodrelations/v1#Offering> .\n"
-        "<http://www.vendor0.fr/offer1> <http://purl.org/goodrelations/v1#price> \"10.00\" .\n"
-        "<http://www.vendor0.fr/offer2> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://purl.org/goodrelations/v1#Offering> .\n"
-    )
-    nt_file = tmp_path / "vendor0.nt"
     void_file = tmp_path / "vendor0.n3"
-    nt_file.write_text(nt_content)
 
-    adapter._generate_void_description(nt_file, void_file, "http://www.vendor0.fr/")
+    responses = iter([
+        b"<literal>3</literal>",
+        b"<literal>2</literal>",
+        b"<literal>2</literal>",
+        (
+            b"<uri>http://purl.org/goodrelations/v1#price</uri>"
+            b"<literal>1</literal><literal>1</literal><literal>1</literal>"
+        ),
+        (
+            b"<uri>http://purl.org/goodrelations/v1#Offering</uri>"
+            b"<literal>2</literal>"
+        ),
+    ])
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return next(responses)
+
+    with patch("fedshop.engines.splendid.urllib.request.urlopen", return_value=FakeResponse()):
+        adapter._generate_void_description(
+            "http://www.vendor0.fr/",
+            "http://localhost:8890/vendor0/sparql",
+            void_file,
+        )
 
     assert void_file.exists()
     content = void_file.read_text()

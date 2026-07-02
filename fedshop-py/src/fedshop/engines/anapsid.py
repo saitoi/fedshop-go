@@ -134,10 +134,9 @@ class AnapsidAdapter(EngineAdapter):
         base = stats.parent
         python2 = _python2_bin()
         env_prefix = f'HTTP_PROXY={proxy_endpoint} HTTPS_PROXY={proxy_endpoint} NO_PROXY=""'
-        timeout_cmd = f"timeout --signal=SIGKILL {timeout}" if timeout != 0 else ""
 
         cmd = (
-            f"{env_prefix} {timeout_cmd} {python2} scripts/run_anapsid "
+            f"{env_prefix} {python2} scripts/run_anapsid "
             f"-e {summary_file} "
             f"-q {query_path.resolve()} "
             f"-p naive -s False -o False -d SSGM -a True "

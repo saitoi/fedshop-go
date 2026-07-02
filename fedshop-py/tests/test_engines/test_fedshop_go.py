@@ -18,8 +18,8 @@ def test_generate_config_reuses_fedshop_endpoint_contract(config_small, tmp_path
         "http://www.ratingsite0.fr/": "http://localhost:5555/rating0",
     })
     content = path.read_text()
-    assert 'sd:endpoint "http://localhost:5555/vendor0"' in content
-    assert 'sd:endpoint "http://localhost:5555/rating0"' in content
+    assert 'sd:endpoint "http://127.0.0.1:5555/vendor0"' in content
+    assert 'sd:endpoint "http://127.0.0.1:5555/rating0"' in content
 
 
 def test_generate_config_localizes_docker_host_without_proxy(config_small, tmp_path):
@@ -35,15 +35,32 @@ def test_generate_config_localizes_docker_host_without_proxy(config_small, tmp_p
 
     content = path.read_text()
     assert "host.docker.internal" not in content
-    assert "http://localhost:8890/sparql?" in content
+    assert "http://127.0.0.1:8890/sparql?" in content
 
 
 def test_prerequisites_builds_with_workspace_cache(config_small, tmp_path):
     from fedshop.engines.fedshop_go import FedShopGoAdapter
     adapter = FedShopGoAdapter(config_small, engine_dir=tmp_path)
-    with patch("fedshop.engines.fedshop_go.subprocess.run") as run:
-        adapter.prerequisites()
+    adapter.options.pop("binary", None)
+    with patch("fedshop.engines.fedshop_go.shutil.which", return_value="/usr/local/bin/go"):
+        with patch("fedshop.engines.fedshop_go.subprocess.run") as run:
+            adapter.prerequisites()
     assert run.call_args.kwargs["env"]["GOCACHE"] == str(tmp_path / ".gocache")
+
+
+def test_prerequisites_accepts_configured_binary_without_go(config_small, tmp_path):
+    from fedshop.engines.fedshop_go import FedShopGoAdapter
+
+    binary = tmp_path / "fedshop-go"
+    binary.write_text("binary")
+    config_small.evaluation.engines["fedshop-go"].extra["binary"] = str(binary)
+
+    adapter = FedShopGoAdapter(config_small, engine_dir=tmp_path / "go-engine")
+    with patch("fedshop.engines.fedshop_go.shutil.which", return_value=None):
+        with patch("fedshop.engines.fedshop_go.subprocess.run") as run:
+            adapter.prerequisites()
+
+    run.assert_not_called()
 
 
 def test_run_benchmark_invokes_binary_and_writes_standard_stats(config_small, tmp_path):
@@ -51,9 +68,10 @@ def test_run_benchmark_invokes_binary_and_writes_standard_stats(config_small, tm
 
     engine_dir = tmp_path / "go-engine"
     engine_dir.mkdir()
-    binary = engine_dir / "fedshop-go"
+    binary = tmp_path / "fedshop-go"
     binary.write_text("binary")
     binary.chmod(0o755)
+    config_small.evaluation.engines["fedshop-go"].extra["binary"] = str(binary)
     config_dir = engine_dir / "target" / "config"
     config_dir.mkdir(parents=True)
     (config_dir / "config_batch0.ttl").write_text("config")
@@ -108,7 +126,9 @@ def test_failed_run_removes_stale_engine_artifacts(config_small, tmp_path):
 
     engine_dir = tmp_path / "go-engine"
     (engine_dir / "target" / "config").mkdir(parents=True)
-    (engine_dir / "fedshop-go").write_text("binary")
+    binary = tmp_path / "fedshop-go"
+    binary.write_text("binary")
+    config_small.evaluation.engines["fedshop-go"].extra["binary"] = str(binary)
     (engine_dir / "target" / "config" / "config_batch0.ttl").write_text("config")
     query = tmp_path / "query.sparql"
     query.write_text("SELECT ?s WHERE { ?s ?p ?o }")

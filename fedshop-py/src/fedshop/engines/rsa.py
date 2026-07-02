@@ -169,6 +169,27 @@ def _extract_service_query(stderr_content: str) -> str | None:
 
 class RsaAdapter(EngineAdapter):
 
+    # Candidate Java 11+ locations tried in order when JAVA_HOME is not set
+    _JAVA_CANDIDATES = [
+        "/opt/homebrew/opt/openjdk@26/bin/java",
+        "/opt/homebrew/opt/openjdk@21/bin/java",
+        "/opt/homebrew/opt/openjdk@17/bin/java",
+        "/opt/homebrew/opt/openjdk@11/bin/java",
+        "/opt/homebrew/opt/openjdk/bin/java",
+    ]
+
+    @classmethod
+    def _find_java(cls, java_bin: str | None = None) -> str:
+        if java_bin:
+            return java_bin
+        java_home = os.environ.get("JAVA_HOME")
+        if java_home:
+            return str(Path(java_home) / "bin" / "java")
+        for candidate in cls._JAVA_CANDIDATES:
+            if Path(candidate).exists():
+                return candidate
+        return "java"
+
     def __init__(self, config: BenchmarkConfig, engine_dir: Path | None = None) -> None:
         entry = config.evaluation.engines["rsa"]
         if engine_dir is None:
@@ -182,6 +203,7 @@ class RsaAdapter(EngineAdapter):
 
         self._fedup_jar = str(self.fedup_dir / "target" / "fedup.jar")
         self._jena_bin = str(self.engine_dir / "jena" / "bin")
+        self._java_bin = self._find_java(entry.extra.get("java_bin"))
 
     def prerequisites(self) -> None:
         if self.fedup_dir and self.fedup_dir.exists():
@@ -275,14 +297,15 @@ class RsaAdapter(EngineAdapter):
 
         failed_reason: str | None = None
         t_start = time.time()
+        fedup_seconds: float | None = None
+        arq_seconds: float | None = None
 
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tf:
             stderr_file = tf.name
 
         try:
-            timeout_prefix = ["timeout", "--signal=SIGKILL", str(timeout)] if timeout != 0 else []
-            cmd = timeout_prefix + [
-                "java",
+            cmd = [
+                self._java_bin,
                 "-Dorg.slf4j.simpleLogger.defaultLogLevel=info",
                 "-jar", self._fedup_jar,
                 "-f", str(query_path.resolve()),
@@ -292,6 +315,7 @@ class RsaAdapter(EngineAdapter):
                 "--explain",
             ]
 
+            t_fedup_start = time.time()
             with open(stderr_file, "w") as sf:
                 proc = subprocess.Popen(
                     cmd,
@@ -305,6 +329,7 @@ class RsaAdapter(EngineAdapter):
             except subprocess.TimeoutExpired:
                 proc.kill()
                 failed_reason = "timeout"
+            fedup_seconds = time.time() - t_fedup_start
 
             # Parse SERVICE query from stderr.
             stderr_content = Path(stderr_file).read_text()
@@ -323,22 +348,37 @@ class RsaAdapter(EngineAdapter):
         if failed_reason is None and query_plan.stat().st_size > 0:
             arq_bin = str(Path(self._jena_bin) / "arq")
             arq_timeout = timeout if timeout != 0 else 600
+            # The arq shell script honours JAVA/JAVA_HOME env vars for Java selection.
+            java_dir = str(Path(self._java_bin).parent)
+            arq_env = os.environ.copy()
+            arq_env["JAVA"] = self._java_bin
+            arq_env["PATH"] = java_dir + ":" + arq_env.get("PATH", "")
             try:
-                arq_cmd = (
-                    ["timeout", "--signal=SIGKILL", str(arq_timeout)]
-                    + [arq_bin, "--query", str(query_plan), "--results", "CSV"]
-                )
+                t_arq_start = time.time()
+                arq_cmd = [arq_bin, "--query", str(query_plan), "--results", "CSV"]
                 arq_result = subprocess.run(
                     arq_cmd,
                     capture_output=True,
                     text=True,
                     timeout=arq_timeout + 5,
+                    env=arq_env,
                 )
+                arq_seconds = time.time() - t_arq_start
                 if arq_result.returncode == 0 and arq_result.stdout.strip():
                     out_result.write_text(arq_result.stdout)
                 else:
+                    (out_result.parent / "arq.stdout").write_text(arq_result.stdout)
+                    (out_result.parent / "arq.stderr").write_text(arq_result.stderr)
                     failed_reason = "error_runtime"
-            except Exception:
+            except subprocess.TimeoutExpired as exc:
+                arq_seconds = time.time() - t_arq_start
+                if exc.stdout:
+                    (out_result.parent / "arq.stdout").write_text(str(exc.stdout))
+                if exc.stderr:
+                    (out_result.parent / "arq.stderr").write_text(str(exc.stderr))
+                failed_reason = "timeout"
+            except Exception as exc:
+                (out_result.parent / "arq.stderr").write_text(repr(exc))
                 failed_reason = "error_runtime"
 
         exec_time = time.time() - t_start
@@ -350,6 +390,12 @@ class RsaAdapter(EngineAdapter):
             (base / "http_req.txt").write_text(str(proxy_stats.get("NB_HTTP_REQ", 0)))
             (base / "ask.txt").write_text(str(proxy_stats.get("NB_ASK", 0)))
             (base / "data_transfer.txt").write_text(str(proxy_stats.get("DATA_TRANSFER", 0)))
+            # FedUP does both source selection and query planning; ARQ handles join execution.
+            if fedup_seconds is not None:
+                (base / "source_selection_time.txt").write_text(str(fedup_seconds))
+                (base / "planning_time.txt").write_text(str(fedup_seconds))
+            if arq_seconds is not None:
+                (base / "join_time.txt").write_text(str(arq_seconds))
             self._write_stats(stats, failed_reason)
 
     def _write_stats(self, stats_path: Path, failed_reason: str | None) -> None:
@@ -368,7 +414,7 @@ class RsaAdapter(EngineAdapter):
             "batch": m.group(4),
             "attempt": m.group(5),
         }
-        for metric in ["exec_time", "source_selection_time", "planning_time", "ask", "http_req", "data_transfer"]:
+        for metric in ["exec_time", "source_selection_time", "planning_time", "join_time", "ask", "http_req", "data_transfer"]:
             if metric == "exec_time" and failed_reason is not None:
                 row[metric] = failed_reason
                 continue

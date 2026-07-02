@@ -55,6 +55,39 @@ def test_check_timeout_propagation_returns_false_when_file_missing(tmp_path):
     assert check_timeout_propagation(missing) is False
 
 
+def test_stats_is_existing_result_accepts_numeric_and_timeout(tmp_path):
+    from fedshop.evaluate import stats_is_existing_result
+    import pandas as pd
+
+    stats = tmp_path / "stats.csv"
+    pd.DataFrame([{"exec_time": "1.25"}]).to_csv(stats, index=False)
+    assert stats_is_existing_result(stats) is True
+
+    pd.DataFrame([{"exec_time": "timeout"}]).to_csv(stats, index=False)
+    assert stats_is_existing_result(stats) is True
+
+
+def test_stats_is_existing_result_rejects_runtime_error(tmp_path):
+    from fedshop.evaluate import stats_is_existing_result
+    import pandas as pd
+
+    stats = tmp_path / "stats.csv"
+    pd.DataFrame([{"exec_time": "error_runtime"}]).to_csv(stats, index=False)
+    assert stats_is_existing_result(stats) is False
+
+
+def test_stats_is_existing_result_rejects_blank_and_nan(tmp_path):
+    from fedshop.evaluate import stats_is_existing_result
+    import pandas as pd
+
+    stats = tmp_path / "stats.csv"
+    pd.DataFrame([{"exec_time": ""}]).to_csv(stats, index=False)
+    assert stats_is_existing_result(stats) is False
+
+    pd.DataFrame([{"exec_time": None}]).to_csv(stats, index=False)
+    assert stats_is_existing_result(stats) is False
+
+
 def test_run_evaluation_skips_when_previous_batch_timed_out(config_small, tmp_path):
     """run_evaluation with timeout propagation should write 'timeout' to stats and not call engine."""
     from fedshop.evaluate import run_evaluation

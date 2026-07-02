@@ -51,6 +51,68 @@ def test_generate_config_file_idempotent_when_endpoints_unchanged(config_small, 
     assert mtime1 == mtime2, "File should not be rewritten when endpoints are unchanged"
 
 
+def test_run_benchmark_writes_engine_log_outside_engine_repo(tmp_path, monkeypatch):
+    """run_benchmark should keep artifacts under the benchmark tree after chdir."""
+    from types import SimpleNamespace
+
+    from fedshop.engines.fedx import FedXAdapter
+
+    cwd = tmp_path / "workspace"
+    bench_root = Path("benchmark") / "run-2026-06-30-new" / "evaluation" / "fedx" / "q01" / "instance_0" / "batch_0" / "attempt_0"
+    bench_root_abs = cwd / bench_root
+    bench_root_abs.mkdir(parents=True)
+    query_path = cwd / "generation" / "q01" / "instance_0" / "injected.sparql"
+    query_path.parent.mkdir(parents=True)
+    query_path.write_text("SELECT * WHERE { ?s ?p ?o }")
+
+    config = SimpleNamespace(
+        evaluation=SimpleNamespace(
+            timeout=1,
+            proxy=SimpleNamespace(host="localhost", port=8080, endpoint="http://localhost:8080"),
+        ),
+        generation=SimpleNamespace(
+            virtuoso=SimpleNamespace(port=8890),
+            workdir=str(cwd / "workdir"),
+        ),
+    )
+
+    class FakeProxyClient:
+        def reset(self):
+            pass
+
+        def get_stats(self):
+            return {"NB_HTTP_REQ": 1, "NB_ASK": 2, "DATA_TRANSFER": 3}
+
+    class FakeProc:
+        returncode = 0
+
+        def wait(self, timeout):
+            return None
+
+    monkeypatch.chdir(cwd)
+    monkeypatch.setattr("fedshop.engines.fedx._wait_virtuoso", lambda endpoint, max_wait=120: None)
+    monkeypatch.setattr("fedshop.engines.fedx.subprocess.Popen", lambda *a, **k: FakeProc())
+    monkeypatch.setattr("fedshop.engines.fedx.os.system", lambda cmd: 0)
+
+    engine_dir = tmp_path / "fedx-repo"
+    engine_dir.mkdir()
+    adapter = FedXAdapter(config, engine_dir=engine_dir)
+    stats_path = bench_root / "stats.csv"
+    adapter.run_benchmark(
+        query_path=query_path,
+        batch_id=0,
+        out_result=bench_root_abs / "results.txt",
+        out_source_selection=bench_root_abs / "source_selection.txt",
+        query_plan=bench_root_abs / "query_plan.txt",
+        stats=stats_path,
+        proxy_client=FakeProxyClient(),
+    )
+
+    assert (bench_root_abs / "engine.log").exists()
+    assert (bench_root_abs / "stats.csv").exists()
+    assert not (engine_dir / "benchmark").exists()
+
+
 def test_transform_results_empty_infile_creates_empty_outfile(tmp_path):
     """Empty results.txt → empty results.csv (no rows, no columns)."""
     from fedshop.engines.fedx import FedXAdapter

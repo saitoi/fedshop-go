@@ -118,8 +118,8 @@ def test_compute_metrics_relevant_sources_selectivity_divides_by_total(config_sm
     assert abs(df.iloc[0]["relevant_sources_selectivity"] - expected) < 1e-6
 
 
-def test_compute_metrics_evaluation_mode_skips_rwss(config_small, tmp_path):
-    """In evaluation mode (engine in config + attempt set), rwss columns should be None."""
+def test_compute_metrics_evaluation_mode_computes_rwss(config_small, tmp_path):
+    """rwss columns are computed even in evaluation mode."""
     from fedshop.metrics import compute_metrics
 
     prov_path = tmp_path / "evaluation" / "fedx" / "q01" / "instance_0" / "batch_0" / "attempt_0" / "provenance.csv"
@@ -129,8 +129,7 @@ def test_compute_metrics_evaluation_mode_skips_rwss(config_small, tmp_path):
     outfile = tmp_path / "metrics.csv"
     df = compute_metrics(config_small, [str(prov_path)], outfile)
 
-    # fedx is in evaluation engines, so rwss should be null
-    assert df.iloc[0]["avg_rwss"] is None or pd.isna(df.iloc[0]["avg_rwss"])
+    assert not pd.isna(df.iloc[0]["avg_rwss"])
 
 
 def test_compute_metrics_nb_results_from_results_csv(config_small, tmp_path):
@@ -286,3 +285,143 @@ def test_full_metrics_no_provenance_has_timing(config_small, tmp_path):
     assert row["http_req"] == 10.0
     assert math.isnan(row["tpwss"])
     assert math.isnan(row["nb_distinct_sources"])
+
+
+# ─── _compare_results unit tests ───────────────────────────────────────────
+
+
+def _write_csv(path, data: dict):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(data).to_csv(path, index=False)
+
+
+def test_compare_results_perfect_match(tmp_path):
+    """Identical engine and reference → precision=recall=f1=1, no spurious/missing."""
+    from fedshop.metrics import _compare_results
+    ref = tmp_path / "ref.csv"
+    eng = tmp_path / "eng.csv"
+    _write_csv(ref, {"a": [1, 2, 3], "b": ["x", "y", "z"]})
+    _write_csv(eng, {"a": [1, 2, 3], "b": ["x", "y", "z"]})
+    r = _compare_results(eng, ref)
+    assert r["precision"] == 1.0
+    assert r["recall"] == 1.0
+    assert r["f1"] == 1.0
+    assert r["nb_spurious"] == 0
+    assert r["nb_missing"] == 0
+    assert r["nb_duplicates"] == 0
+    assert r["missing_vars"] == 0
+
+
+def test_compare_results_spurious_rows(tmp_path):
+    """Engine returns extra rows not in reference → recall=1, precision<1, nb_spurious>0."""
+    from fedshop.metrics import _compare_results
+    ref = tmp_path / "ref.csv"
+    eng = tmp_path / "eng.csv"
+    _write_csv(ref, {"a": [1, 2]})
+    _write_csv(eng, {"a": [1, 2, 3, 4]})  # 2 spurious
+    r = _compare_results(eng, ref)
+    assert r["recall"] == 1.0
+    assert r["precision"] == 0.5
+    assert r["nb_spurious"] == 2
+    assert r["nb_missing"] == 0
+
+
+def test_compare_results_missing_rows(tmp_path):
+    """Engine misses rows → precision=1, recall<1, nb_missing>0."""
+    from fedshop.metrics import _compare_results
+    ref = tmp_path / "ref.csv"
+    eng = tmp_path / "eng.csv"
+    _write_csv(ref, {"a": [1, 2, 3, 4]})
+    _write_csv(eng, {"a": [1, 2]})  # misses 3 and 4
+    r = _compare_results(eng, ref)
+    assert r["precision"] == 1.0
+    assert r["recall"] == 0.5
+    assert r["nb_missing"] == 2
+    assert r["nb_spurious"] == 0
+
+
+def test_compare_results_partial_overlap(tmp_path):
+    """Engine has some correct, some wrong, some missing."""
+    from fedshop.metrics import _compare_results
+    ref = tmp_path / "ref.csv"
+    eng = tmp_path / "eng.csv"
+    _write_csv(ref, {"a": [1, 2, 3]})
+    _write_csv(eng, {"a": [1, 2, 99]})  # 1 spurious, 1 missing
+    r = _compare_results(eng, ref)
+    assert abs(r["precision"] - 2 / 3) < 1e-9
+    assert abs(r["recall"] - 2 / 3) < 1e-9
+    assert r["nb_spurious"] == 1
+    assert r["nb_missing"] == 1
+
+
+def test_compare_results_both_empty(tmp_path):
+    """Both empty → precision=recall=f1=1."""
+    from fedshop.metrics import _compare_results
+    ref = tmp_path / "ref.csv"
+    eng = tmp_path / "eng.csv"
+    _write_csv(ref, {"a": []})
+    _write_csv(eng, {"a": []})
+    r = _compare_results(eng, ref)
+    assert r["precision"] == 1.0
+    assert r["recall"] == 1.0
+    assert r["f1"] == 1.0
+
+
+def test_compare_results_engine_empty_ref_nonempty(tmp_path):
+    """Engine returns nothing, ref has rows → recall=0, precision=nan."""
+    import math
+    from fedshop.metrics import _compare_results
+    ref = tmp_path / "ref.csv"
+    eng = tmp_path / "eng.csv"
+    _write_csv(ref, {"a": [1, 2]})
+    _write_csv(eng, {"a": []})
+    r = _compare_results(eng, ref)
+    assert math.isnan(r["precision"])
+    assert r["recall"] == 0.0
+    assert r["nb_missing"] == 2
+
+
+def test_compare_results_nb_duplicates(tmp_path):
+    """Duplicate rows in engine output are counted."""
+    from fedshop.metrics import _compare_results
+    ref = tmp_path / "ref.csv"
+    eng = tmp_path / "eng.csv"
+    _write_csv(ref, {"a": [1, 2]})
+    _write_csv(eng, {"a": [1, 1, 2]})  # row 1 duplicated
+    r = _compare_results(eng, ref)
+    assert r["nb_duplicates"] == 1
+
+
+def test_compare_results_missing_vars(tmp_path):
+    """Engine output missing reference column → missing_vars=1."""
+    from fedshop.metrics import _compare_results
+    ref = tmp_path / "ref.csv"
+    eng = tmp_path / "eng.csv"
+    _write_csv(ref, {"a": [1], "b": ["x"]})
+    _write_csv(eng, {"a": [1]})  # missing column b
+    r = _compare_results(eng, ref)
+    assert r["missing_vars"] == 1
+
+
+def test_compare_results_float_normalization(tmp_path):
+    """Rows with numerically equal but textually different floats count as matches."""
+    from fedshop.metrics import _compare_results
+    ref = tmp_path / "ref.csv"
+    eng = tmp_path / "eng.csv"
+    _write_csv(ref, {"price": ["7289.2399999999997817"]})
+    _write_csv(eng, {"price": ["7289.24"]})
+    r = _compare_results(eng, ref)
+    assert r["precision"] == 1.0
+    assert r["recall"] == 1.0
+
+
+def test_compare_results_no_ref_returns_nan(tmp_path):
+    """Missing reference file → all metrics are nan."""
+    import math
+    from fedshop.metrics import _compare_results
+    eng = tmp_path / "eng.csv"
+    _write_csv(eng, {"a": [1]})
+    r = _compare_results(eng, tmp_path / "nonexistent.csv")
+    assert math.isnan(r["precision"])
+    assert math.isnan(r["recall"])
+    assert math.isnan(r["f1"])

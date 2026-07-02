@@ -108,15 +108,8 @@ def test_generate_config_file_writes_repo_ttl_with_metadata_path(config_small, t
         "http://www.vendor0.fr/": "http://localhost:5555/vendor0/sparql",
     }
 
-    # Mock sevod-scraper mvn call and rdflib operations
-    mock_graph = type("FakeGraph", (), {
-        "parse": lambda self, *a, **kw: None,
-        "serialize": lambda self, *a, **kw: None,
-    })()
-
     with (
         patch("fedshop.engines.semagrow.os.system", return_value=0),
-        patch("fedshop.engines.semagrow.ConjunctiveGraph", return_value=mock_graph),
         patch("builtins.open", side_effect=Exception("should not write summary")),
     ):
         # Summary file exists with endpoint so no regen needed; only repo_file written
@@ -130,3 +123,62 @@ def test_generate_config_file_writes_repo_ttl_with_metadata_path(config_small, t
     content = repo_file.read_text()
     assert "semagrow:metadataInit" in content
     assert str(summary_file) in content
+
+
+def test_run_benchmark_writes_engine_log_outside_engine_repo(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from fedshop.engines.semagrow import SemagrowAdapter
+
+    cwd = tmp_path / "workspace"
+    bench_root = Path("benchmark") / "run-2026-06-30-new" / "evaluation" / "semagrow" / "q01" / "instance_0" / "batch_0" / "attempt_0"
+    bench_root_abs = cwd / bench_root
+    bench_root_abs.mkdir(parents=True)
+    query_path = cwd / "generation" / "q01" / "instance_0" / "injected.sparql"
+    query_path.parent.mkdir(parents=True)
+    query_path.write_text("SELECT * WHERE { ?s ?p ?o }")
+
+    config = SimpleNamespace(
+        evaluation=SimpleNamespace(
+            timeout=1,
+            proxy=SimpleNamespace(endpoint="http://localhost:8080"),
+            engines={"semagrow": SimpleNamespace(extra={})},
+        ),
+        generation=SimpleNamespace(virtuoso=SimpleNamespace(port=8890)),
+    )
+
+    class FakeProxyClient:
+        def reset(self):
+            pass
+
+        def get_stats(self):
+            return {"NB_HTTP_REQ": 1, "NB_ASK": 2, "DATA_TRANSFER": 3}
+
+    class FakeProc:
+        returncode = 0
+
+        def wait(self, timeout):
+            return None
+
+    engine_dir = tmp_path / "semagrow-repo"
+    (engine_dir / "summaries").mkdir(parents=True)
+    (engine_dir / "summaries" / "repo-fedshop-batch0.ttl").write_text("repo")
+    monkeypatch.chdir(cwd)
+    monkeypatch.setattr("fedshop.engines.semagrow._wait_virtuoso", lambda endpoint, max_wait=120: None)
+    monkeypatch.setattr("fedshop.engines.semagrow.subprocess.Popen", lambda *a, **k: FakeProc())
+    monkeypatch.setattr("fedshop.engines.semagrow.os.system", lambda cmd: 0)
+
+    adapter = SemagrowAdapter(config, engine_dir=engine_dir)
+    adapter.run_benchmark(
+        query_path=query_path,
+        batch_id=0,
+        out_result=bench_root_abs / "results.txt",
+        out_source_selection=bench_root_abs / "source_selection.txt",
+        query_plan=bench_root_abs / "query_plan.txt",
+        stats=bench_root / "stats.csv",
+        proxy_client=FakeProxyClient(),
+    )
+
+    assert (bench_root_abs / "engine.log").exists()
+    assert (bench_root_abs / "stats.csv").exists()
+    assert not (engine_dir / "benchmark").exists()

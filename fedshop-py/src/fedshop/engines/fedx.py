@@ -161,12 +161,14 @@ class FedXAdapter(EngineAdapter):
         ])
 
         # Run with java -cp to avoid Maven overhead (saves ~200MB vs mvn exec:java)
-        # Patch 1: http.nonProxyHosts excludes local addresses
+        # Patch 1: http.nonProxyHosts excludes local addresses so FedX bypasses the
+        #   FedShop proxy and sends queries directly to Virtuoso (the proxy is not a
+        #   general HTTP forwarder). Virtuoso has been configured with 200 threads and
+        #   500 max connections to handle FedX's concurrent load.
         # Patch 2: http.keepAlive=false avoids stale-connection errors between batches
         cp = "target/FedX-1.0-SNAPSHOT.jar:target/lib/*"
-        timeout_cmd = f"timeout --signal=SIGKILL {timeout}" if timeout != 0 else ""
         cmd = (
-            f'{timeout_cmd} java '
+            f'java '
             f'-Xmx2g '
             f'-Dhttp.proxyHost="{proxy_host}" '
             f'-Dhttp.proxyPort="{proxy_port}" '
@@ -176,35 +178,47 @@ class FedXAdapter(EngineAdapter):
             f'org.example.FedX {args}'
         ).strip()
 
+        # Resolve once before changing cwd: the FedX repo chdir would otherwise
+        # reinterpret relative benchmark paths under reference-repos/FedShop.
+        stats_abs = stats if str(stats) == "/dev/null" else stats.resolve()
+        base = stats_abs.parent
+        base.mkdir(parents=True, exist_ok=True)
+
         old_cwd = os.getcwd()
         os.chdir(self.engine_dir)
 
         t_start = time.time()
-        proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        log_handle = None
+        stdout_target = subprocess.DEVNULL
+        if str(stats_abs) != "/dev/null":
+            log_handle = (base / "engine.log").open("wb")
+            stdout_target = log_handle
+        proc = subprocess.Popen(cmd, shell=True, stdout=stdout_target, stderr=subprocess.STDOUT)
         failed_reason: str | None = None
 
         try:
             proc.wait(timeout)
-            if proc.returncode != 0 and not stats.exists():
+            if proc.returncode != 0 and not stats_abs.exists():
                 failed_reason = "error_runtime"
         except subprocess.TimeoutExpired:
             failed_reason = "timeout"
         finally:
             os.system('pkill -9 -f "FedX-1.0-SNAPSHOT.jar"')
+            if log_handle is not None:
+                log_handle.close()
 
         exec_time = time.time() - t_start
         os.chdir(old_cwd)
 
-        if str(stats) != "/dev/null":
+        if str(stats_abs) != "/dev/null":
             proxy_stats = proxy_client.get_stats()
-            base = stats.parent
 
             (base / "http_req.txt").write_text(str(proxy_stats.get("NB_HTTP_REQ", 0)))
             (base / "ask.txt").write_text(str(proxy_stats.get("NB_ASK", 0)))
             (base / "data_transfer.txt").write_text(str(proxy_stats.get("DATA_TRANSFER", 0)))
             (base / "exec_time.txt").write_text(str(exec_time))
 
-            self._write_stats(stats, failed_reason)
+            self._write_stats(stats_abs, failed_reason)
 
     def _write_stats(self, stats_path: Path, failed_reason: str | None) -> None:
         m = re.match(
@@ -229,11 +243,27 @@ class FedXAdapter(EngineAdapter):
             metric_file = base / f"{metric}.txt"
             if metric_file.exists():
                 try:
-                    row[metric] = float(metric_file.read_text())
+                    val = float(metric_file.read_text())
+                    # FedX Java reports source_selection_time and planning_time in ms
+                    if metric in ("source_selection_time", "planning_time"):
+                        val /= 1000.0
+                    row[metric] = val
                 except ValueError:
                     row[metric] = failed_reason
             else:
                 row[metric] = failed_reason
+
+        # join_time = total execution minus source selection and planning phases
+        if failed_reason is not None:
+            row["join_time"] = failed_reason
+        else:
+            try:
+                exec_t = float(row.get("exec_time", 0) or 0)
+                ss_t = float(row.get("source_selection_time", 0) or 0)
+                plan_t = float(row.get("planning_time", 0) or 0)
+                row["join_time"] = max(0.0, exec_t - ss_t - plan_t)
+            except (TypeError, ValueError):
+                row["join_time"] = None
 
         pd.DataFrame([row]).to_csv(stats_path, index=False)
 

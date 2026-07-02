@@ -163,6 +163,7 @@ evaluation:
   engines:
     fedshop-go:
       dir: "${config_dir}/../../../go-engine"
+      binary: "/tmp/fedshop-go-dummy"
       selector: ask
       cache: memory
       join: bind
@@ -170,9 +171,9 @@ evaluation:
       exclusive_groups: true
       failure_policy: strict
     fedx:
-      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/FedShop/engines/FedX"
+      dir: "${config_dir}/../../../reference-repos/FedShop/engines/FedX"
     rsa:
-      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/FedShop/engines/ARQ"
+      dir: "${config_dir}/../../../reference-repos/FedShop/engines/ARQ"
       internal_endpoint_prefix: "http://localhost:8890/sparql/?default-graph-uri="
       compose_file: "${config_dir}/../../docker/jena.yml"
       service_name: "jena-fuseki"
