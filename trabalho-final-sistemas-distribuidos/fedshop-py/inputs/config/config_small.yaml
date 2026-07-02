@@ -1,0 +1,39 @@
+profile: smoke
+use_docker: true
+
+scale:
+  batches: 2
+  members_per_batch: 10
+  product_count: 20000
+  product_scale_factor: 1
+  source_scale_factor: 1
+  feature_c: 9
+  type_c: 9
+  offer_n: 20
+  review_n: 100
+
+queries:
+  instances: 1
+  dir: inputs/queries
+
+inputs:
+  templates: inputs/templates
+  dataset: inputs/product-dataset
+  workdir: data
+
+services:
+  virtuoso_port: 8890
+  proxy_port: 5555
+
+evaluation:
+  attempts: 2
+  timeout: 120
+  engines:
+    pyfedx:
+      dir: ../../scripts
+    fedshop-go:
+      dir: ../../go-engine
+      selector: ask
+      join: bind
+      planner: source-count
+      max_concurrency: 4
