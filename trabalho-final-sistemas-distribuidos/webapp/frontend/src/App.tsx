@@ -91,7 +91,7 @@ export function App() {
     setFetchError(null)
     try {
       const query = await fetchQueryText(queryId)
-      const trace = await executeQuery({ query, config_id: configId, engine: engineId, timeout: 60 })
+      const trace = await executeQuery({ query, config_id: configId, engine: engineId, timeout: 180 })
       player.load(compile(trace.events))
       player.playing = true
     } catch (e) {

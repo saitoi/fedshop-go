@@ -1,0 +1,24 @@
+SELECT ?productLabel ?offer ?price ?vendor ?vendorTitle ?review ?revTitle ?reviewer ?revName ?rating1 ?rating2 {
+<http://www.vendor0.fr/Product9739> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/Product>.
+<http://www.vendor0.fr/Product9739> <http://www.w3.org/2000/01/rdf-schema#label> ?productLabel.
+OPTIONAL{
+?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/product> <http://www.vendor0.fr/Product9739>.
+?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/vendor> ?vendor.
+?vendor <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/country> <http://downlode.org/rdf/iso-3166/countries#US>.
+?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/price> ?price.
+?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/validTo> ?date.
+?vendor <http://www.w3.org/2000/01/rdf-schema#label> ?vendorTitle.
+}
+OPTIONAL{
+?review <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/reviewFor> <http://www.vendor0.fr/Product9739>.
+?review <http://purl.org/stuff/rev#reviewer> ?reviewer.
+?review <http://purl.org/dc/elements/1.1/title> ?revTitle.
+?reviewer <http://xmlns.com/foaf/0.1/name> ?revName.
+OPTIONAL{
+?review <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/rating1> ?rating1.
+}
+OPTIONAL{
+?review <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/rating2> ?rating2.
+}
+}
+}

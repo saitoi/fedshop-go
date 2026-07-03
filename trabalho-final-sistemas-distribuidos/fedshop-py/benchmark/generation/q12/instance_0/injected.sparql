@@ -1,0 +1,12 @@
+SELECT ?productURI ?productlabel ?vendorname ?vendorhomepage ?offerURL ?price ?deliveryDays ?validTo {
+<http://www.vendor0.fr/Offer11> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/product> ?productURI.
+<http://www.vendor0.fr/Offer11> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/vendor> ?vendorURI.
+<http://www.vendor0.fr/Offer11> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/deliveryDays> ?deliveryDays.
+<http://www.vendor0.fr/Offer11> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/offerWebpage> ?offerURL.
+<http://www.vendor0.fr/Offer11> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/price> ?price.
+<http://www.vendor0.fr/Offer11> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/validTo> ?validTo.
+?productURI <http://www.w3.org/2000/01/rdf-schema#label> ?productlabel.
+?productURI <http://www.w3.org/2002/07/owl#sameAs> ?ProductXYZ.
+?vendorURI <http://www.w3.org/2000/01/rdf-schema#label> ?vendorname.
+?vendorURI <http://xmlns.com/foaf/0.1/homepage> ?vendorhomepage.
+}

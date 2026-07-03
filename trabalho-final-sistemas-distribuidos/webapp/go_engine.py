@@ -1,7 +1,8 @@
 """Executa o fedshop-go com --trace e normaliza o trace para o formato do player.
 
-O binário é o mesmo usado pelo benchmark (go-engine/fedshop-go); a flag --trace
-grava os eventos no mesmo schema do tracer.py. Aqui só é preciso:
+O binário é a cópia local do trabalho (../go-engine/fedshop-go, compilar com
+`go build -o fedshop-go ./cmd/fedshop-go`); a flag --trace grava os eventos no
+mesmo schema do tracer.py. Aqui só é preciso:
   - gerar o config TTL (sd:Service) a partir do proxy mapping JSON,
   - normalizar os ids de endpoint ("http_www.vendor0.fr" → "vendor0").
 """
@@ -16,7 +17,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-_DEFAULT_BINARY = Path(__file__).parent.parent.parent / "go-engine" / "fedshop-go"
+_DEFAULT_BINARY = Path(__file__).parent.parent / "go-engine" / "fedshop-go"
 BINARY = Path(os.environ.get("FEDSHOP_GO_BINARY", str(_DEFAULT_BINARY)))
 
 

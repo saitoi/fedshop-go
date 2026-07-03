@@ -21,7 +21,7 @@ export async function executeQuery(body: {
   const r = await fetch("/api/execute", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ timeout: 60, ...body }),
+    body: JSON.stringify({ timeout: 180, ...body }),
   })
   if (!r.ok) {
     let detail = `HTTP ${r.status}`
