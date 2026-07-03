@@ -24,14 +24,21 @@ _HERE = Path(__file__).parent
 _FEDSHOP_PY = _HERE.parent / "fedshop-py"
 _GENERATION = _FEDSHOP_PY / "benchmark" / "generation"
 _DATA = _FEDSHOP_PY / "data"
-_STATIC = _HERE / "static"
+_DIST = _HERE / "frontend" / "dist"
 
-app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
+if (_DIST / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
 
 
 @app.get("/", include_in_schema=False)
 def root() -> FileResponse:
-    return FileResponse(str(_STATIC / "index.html"))
+    index = _DIST / "index.html"
+    if not index.exists():
+        raise HTTPException(
+            status_code=503,
+            detail="Frontend não compilado — rode `npm run build` em webapp/frontend",
+        )
+    return FileResponse(str(index))
 
 
 @app.get("/api/queries")
@@ -124,3 +131,9 @@ def execute(req: ExecuteRequest) -> JSONResponse:
         raise HTTPException(status_code=400, detail=f"engine '{req.engine}' desconhecido")
     result["engine"] = req.engine
     return JSONResponse(result)
+
+
+# Fallback para os demais arquivos do build (favicon etc.) — registrado por
+# último para não sombrear as rotas /api.
+if _DIST.exists():
+    app.mount("/", StaticFiles(directory=str(_DIST), html=True), name="dist")
