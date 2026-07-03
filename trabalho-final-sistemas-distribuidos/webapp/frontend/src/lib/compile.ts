@@ -37,6 +37,28 @@ export function shortId(id: string): string {
   return id.slice(0, 4)
 }
 
+/** Valor de binding curto para tooltips: último segmento de IRIs, truncado. */
+function shortVal(v: string): string {
+  let s = v
+  const m = s.match(/^https?:\/\/.*[/#]([^/#]+)\/?$/)
+  if (m) s = m[1]
+  return s.length > 32 ? s.slice(0, 30) + "…" : s
+}
+
+/** Formata uma amostra de bindings (até `max` linhas) para o corpo do tooltip. */
+function fmtSample(sample: SampleRow[] | undefined, total: number | null, max = 5): string {
+  if (!sample?.length) return ""
+  const shown = sample.slice(0, max)
+  const lines = shown.map((r) =>
+    Object.entries(r)
+      .map(([k, v]) => `?${k} = ${shortVal(v)}`)
+      .join(" · ")
+  )
+  const more = (total ?? sample.length) - shown.length
+  if (more > 0) lines.push(`… +${fmt.format(more)} linha(s)`)
+  return lines.join("\n")
+}
+
 export interface Particle {
   t: number
   dur: number
@@ -147,9 +169,13 @@ export function compile(events: TraceEvent[]): Timeline {
       phase("intro", "consulta", COLOR.ink)
       for (const tp of ev.triples ?? []) tpText.set(tp.id, tp.sparql)
       mark(cursor, { kind: "init", ev })
+      const queryText = (ev.query ?? "").trim()
       particles.push({
         t: cursor, dur: 500, from: "__CLIENT__", to: "__ENGINE__", color: COLOR.ink, label: "query",
-        tip: { title: "Consulta SPARQL do cliente", body: `${ev.triples!.length} padrões de tripla · ${ev.endpoints!.length} endpoints` },
+        tip: {
+          title: `Consulta SPARQL do cliente (${ev.triples!.length} padrões · ${ev.endpoints!.length} endpoints)`,
+          body: queryText.length > 600 ? queryText.slice(0, 598) + "…" : queryText,
+        },
       })
       mark(cursor, {
         kind: "log", dot: COLOR.ink, real: ev.t0,
@@ -319,8 +345,8 @@ export function compile(events: TraceEvent[]): Timeline {
           t: back, dur: TRAVEL, from: s0.endpoint_id!, to: "__ENGINE__",
           color: COLOR.select, label: fmt.format(s0.rows!), big: (s0.rows ?? 0) > 0,
           tip: {
-            title: `${s0.endpoint_id} → motor (SELECT ${tp})`,
-            body: `${fmt.format(s0.rows!)} linha(s) de bindings em ${((s0.t1 - s0.t0) * 1000).toFixed(0)}ms reais`,
+            title: `${s0.endpoint_id} → motor: ${fmt.format(s0.rows!)} binding(s) para ${tp}`,
+            body: fmtSample(s0.sample, s0.rows ?? null) || `${fmt.format(s0.rows!)} linha(s) em ${((s0.t1 - s0.t0) * 1000).toFixed(0)}ms reais`,
           },
         })
         const arrive = back + TRAVEL
@@ -473,7 +499,10 @@ export function compile(events: TraceEvent[]): Timeline {
       mark(cursor, { kind: "tpActive", tp: null })
       particles.push({
         t: cursor, dur: 550, from: "__ENGINE__", to: "__CLIENT__", color: COLOR.ok, label: `${fmt.format(ev.rows!)} linhas`, big: true,
-        tip: { title: "Resposta final ao cliente", body: `${fmt.format(ev.rows!)} linha(s) · ${ev.http_requests} req. HTTP · ${ev.total_seconds!.toFixed(2)}s reais` },
+        tip: {
+          title: `Resposta final ao cliente: ${fmt.format(ev.rows!)} linha(s) · ${ev.http_requests} req. HTTP · ${ev.total_seconds!.toFixed(2)}s reais`,
+          body: fmtSample(ev.sample, ev.rows ?? null),
+        },
       })
       const arrive = cursor + 550
       mark(arrive, { kind: "pulse", node: "__CLIENT__" })

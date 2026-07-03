@@ -288,11 +288,11 @@ export function Graph({ engineLabel }: { engineLabel: string }) {
       {/* Tooltip das partículas — posicionado imperativamente junto com o frame. */}
       <div
         ref={tipRef}
-        className="pointer-events-none absolute z-10 max-w-xs rounded-md border bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-md transition-opacity"
+        className="pointer-events-none absolute z-10 max-w-sm rounded-md border bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-md transition-opacity"
         style={{ opacity: 0 }}
       >
         <div ref={tipTitleRef} className="font-medium" />
-        <div ref={tipBodyRef} className="mt-0.5 font-mono text-[11px] leading-snug break-words text-muted-foreground" />
+        <div ref={tipBodyRef} className="mt-0.5 font-mono text-[11px] leading-snug break-words whitespace-pre-wrap text-muted-foreground" />
       </div>
     </div>
   )
