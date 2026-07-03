@@ -1,0 +1,33 @@
+TRABALHO FINAL
+
+Pessoal, nosso trabalho final da disciplina será como segue:
+
+-O trabalho deve ser feito necessariamente em dupla ou trio (não há da minha parte nenhuma preferência por um ou por outro - você decide);
+-Os nomes + DREs definitivos para as duplas ou trios devem ser enviados para o meu email até as 23:59h do dia 08/06. Não serão aceitas inclusões / remoções / alterações de nomes após essa data. Alunos sem dupla/trio até essa data, terão automaticamente atribuídos a si o grau zero para este trabalho.
+
+Seu grupo deve implementar uma solução QUALQUER em Sistemas Distribuídos. Fica totalmente à escolha do grupo:   
+-a arquitetura de software;
+-a arquitetura de sistema;
+-os protocolos de comunicação e de aplicação (inclusive inventar um protocolo!).
+   
+---> Sua solução deve ser reprodutível no Lab-1. Fica à escolha do grupo se a demonstração utilizará as máquinas do próprio laboratório ou computadores (notebooks, celulares, tablets, etc.) que o próprio grupo quiser trazer no dia.
+
+APRESENTAÇÃO:
+-A apresentação dos trabalhos será dia 08/07, a partir das 10h no LAB-1.
+-A ordem de apresentação será sorteada no dia;
+
+-Cada dupla/trio deverá: 
+(i) fazer uma apresentação em slides sobre os detalhes do trabalho; 
+(ii) executar a solução no laboratório. 
+
+---> Para qualquer grupo, se nenhum de seus membros aparecer no dia para apresentar o trabalho, será automaticamente atribuída a nota zero a todos os seus integrantes.
+
+Seu grupo deve ser sucinto e direto ao ponto. 
+O tempo total para slides + demonstração é 15 minutos por grupo, distribuídos como o grupo quiser.
+Por exemplo, um grupo pode dedicar mais tempo para os slides e menos para a demonstração; um outro grupo pode, se quiser, fazer exatamente o contrário.
+
+ELEIÇÃO DO GRUPO VENCEDOR + PRÊMIO:
+-Cada aluno votará em 2 trabalhos distintos, que considera serem os melhores.
+-Ganha o trabalho com mais votos.
+-O grupo vencedor será premiado com R$ 200,00. Isso mesmo, dinheiro. 
+-Briguem, briguem, BRIGUEM!
