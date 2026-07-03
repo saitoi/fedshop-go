@@ -6,6 +6,7 @@ import { Graph } from "@/components/graph"
 import { JoinsTab } from "@/components/joins-tab"
 import { LogTab } from "@/components/log-tab"
 import { OverviewTab } from "@/components/overview-tab"
+import { PhaseStepper } from "@/components/phase-stepper"
 import { PlayerBar } from "@/components/player-bar"
 import { ResultsTab } from "@/components/results-tab"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -119,11 +120,11 @@ export function App() {
               {running ? <Spinner /> : <Play />}
               {running ? "Executando…" : "Executar"}
             </Button>
-            <Badge variant={ui.errorMessage ? "destructive" : "secondary"}>
-              {running ? "executando de verdade…" : ui.phaseLabel}
-            </Badge>
+            {running && <Badge variant="secondary">executando de verdade…</Badge>}
           </div>
         </header>
+
+        <PhaseStepper />
 
         {fetchError && (
           <Alert variant="destructive" className="mx-4 mt-3">

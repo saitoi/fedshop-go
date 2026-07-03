@@ -15,6 +15,7 @@ const DWELL_MIN = 140
 const DWELL_MAX = 700
 const GAP = 220
 const STEP_DUR = 450
+const PLAN_DUR = 900
 
 export const COLOR = {
   vendor: "#3987e5",
@@ -44,6 +45,8 @@ export interface Particle {
   color: string
   label: string
   big?: boolean
+  /** conteúdo do tooltip ao passar o mouse sobre a partícula */
+  tip?: { title: string; body: string }
 }
 
 export type MarkBody = (
@@ -80,11 +83,16 @@ export interface EngineStep {
   outVars: string[]
 }
 
+export type PhaseId = "intro" | "sources" | "planning" | "execution" | "results" | "error"
+
 export interface Phase {
+  id: PhaseId
   name: string
   color: string
   start: number
   end?: number
+  /** resumo exibido no chip do stepper quando a fase termina */
+  metric?: string
 }
 
 export interface Timeline {
@@ -106,10 +114,21 @@ export function compile(events: TraceEvent[]): Timeline {
   const steps: EngineStep[] = []
   let cursor = 0
 
+  // Texto de cada padrão de tripla (para tooltips) e métricas por fase.
+  const tpText = new Map<string, string>()
+  let askTotal = 0
+  let askPos = 0
+  let selTotal = 0
+  let joinTotal = 0
+  let sourcesSeconds: number | null = null
+  let finalRows: number | null = null
+  let totalSeconds: number | null = null
+  let planSummary: string | null = null
+
   const mark = (t: number, m: MarkBody) => {
     marks.push({ ...m, t })
   }
-  const phase = (name: string, color: string) => phases.push({ name, color, start: cursor })
+  const phase = (id: PhaseId, name: string, color: string) => phases.push({ id, name, color, start: cursor })
   const closePhase = () => {
     if (phases.length) phases[phases.length - 1].end = cursor
   }
@@ -125,9 +144,13 @@ export function compile(events: TraceEvent[]): Timeline {
     const ev = events[i]
 
     if (ev.type === "run_start") {
-      phase("consulta", COLOR.ink)
+      phase("intro", "consulta", COLOR.ink)
+      for (const tp of ev.triples ?? []) tpText.set(tp.id, tp.sparql)
       mark(cursor, { kind: "init", ev })
-      particles.push({ t: cursor, dur: 500, from: "__CLIENT__", to: "__ENGINE__", color: COLOR.ink, label: "query" })
+      particles.push({
+        t: cursor, dur: 500, from: "__CLIENT__", to: "__ENGINE__", color: COLOR.ink, label: "query",
+        tip: { title: "Consulta SPARQL do cliente", body: `${ev.triples!.length} padrões de tripla · ${ev.endpoints!.length} endpoints` },
+      })
       mark(cursor, {
         kind: "log", dot: COLOR.ink, real: ev.t0,
         msg: `Cliente envia a consulta ao motor (${ev.triples!.length} padrões de tripla, ${ev.endpoints!.length} endpoints)`,
@@ -145,7 +168,7 @@ export function compile(events: TraceEvent[]): Timeline {
 
     if (ev.type === "phase") {
       if (ev.name === "source_selection") {
-        phase("seleção de fontes", COLOR.ask)
+        phase("sources", "seleção de fontes", COLOR.ask)
         mark(cursor, { kind: "phase", label: "seleção de fontes", engineStatus: "sondando endpoints (ASK)…" })
         mark(cursor, {
           kind: "log", dot: COLOR.ask, real: ev.t0,
@@ -153,7 +176,7 @@ export function compile(events: TraceEvent[]): Timeline {
         })
       } else if (ev.name === "execution") {
         closePhase()
-        phase("execução", COLOR.select)
+        phase("execution", "execução", COLOR.select)
         mark(cursor, { kind: "phase", label: "execução", engineStatus: "buscando bindings (SELECT)…" })
         mark(cursor, {
           kind: "log", dot: COLOR.select, real: ev.t0,
@@ -182,13 +205,22 @@ export function compile(events: TraceEvent[]): Timeline {
         group.forEach((a, k) => {
           const s = cursor + k * ASK_STAGGER
           const dwell = dwellOf(a)
-          particles.push({ t: s, dur: TRAVEL, from: "__ENGINE__", to: a.endpoint_id!, color: COLOR.ask, label: tp })
+          askTotal++
+          if (a.result) askPos++
+          particles.push({
+            t: s, dur: TRAVEL, from: "__ENGINE__", to: a.endpoint_id!, color: COLOR.ask, label: tp,
+            tip: { title: `ASK ${tp} → ${a.endpoint_id}`, body: tpText.get(tp) ?? a.sparql ?? "" },
+          })
           mark(s, { kind: "op", op: "ASK", tp, endpoint: a.endpoint_id!, sparql: a.sparql!, status: "em voo…", realDur: a.t1 - a.t0 })
           mark(s, { kind: "count", counter: "ask", delta: 1 })
           const back = s + TRAVEL + dwell
           particles.push({
             t: back, dur: TRAVEL, from: a.endpoint_id!, to: "__ENGINE__",
             color: a.result ? COLOR.ok : COLOR.muted, label: a.result ? "sim" : "não",
+            tip: {
+              title: `${a.endpoint_id} → motor (ASK ${tp})`,
+              body: a.result ? "sim — o endpoint TEM dados que casam com o padrão" : "não — o endpoint não tem esse padrão",
+            },
           })
           const arrive = back + TRAVEL
           mark(arrive, { kind: "matrix", tp, endpoint: a.endpoint_id!, result: !!a.result })
@@ -214,11 +246,43 @@ export function compile(events: TraceEvent[]): Timeline {
       const sources = ev.sources as Record<string, string[]>
       const nsrc = Object.values(sources).filter((s) => s.length).length
       const ntp = Object.keys(sources).length
+      sourcesSeconds = ev.t1 - ev.t0
       mark(cursor, {
         kind: "log", dot: COLOR.ok, real: ev.t1,
         msg: `Seleção de fontes concluída: ${ev.ask_count} ASKs em ${(ev.t1 - ev.t0).toFixed(2)}s reais — ${nsrc}/${ntp} padrões têm fontes`,
       })
       cursor += GAP
+      closePhase()
+
+      // Fase sintetizada de planejamento: o trace não a demarca explicitamente,
+      // mas a ordem do plano está nos tp_exec (pyfedx) / note (fedshop-go) à frente.
+      phase("planning", "planejamento", COLOR.engine)
+      mark(cursor, { kind: "phase", label: "planejamento", engineStatus: "ordenando padrões (plano de execução)…" })
+      mark(cursor, { kind: "pulse", node: "__ENGINE__" })
+      const tpOrder: { tp: string; order: number }[] = []
+      let notes = 0
+      for (let j = i + 1; j < events.length; j++) {
+        const e2 = events[j]
+        if (e2.type === "tp_exec") tpOrder.push({ tp: e2.tp_id!, order: e2.order ?? tpOrder.length })
+        else if (e2.type === "note") notes++
+      }
+      if (tpOrder.length) {
+        tpOrder.sort((a, b) => a.order - b.order)
+        planSummary = tpOrder.map((o) => o.tp).join(" → ")
+        mark(cursor, {
+          kind: "log", dot: COLOR.engine, real: ev.t1,
+          msg: `Plano de execução: ${planSummary} (padrões com menos fontes primeiro, para manter os resultados intermediários pequenos)`,
+        })
+      } else if (notes) {
+        planSummary = `${notes} otimização(ões) aplicadas`
+        mark(cursor, {
+          kind: "log", dot: COLOR.engine, real: ev.t1,
+          msg: `Motor monta o plano de execução (${notes} otimização(ões) — detalhes no log a seguir)`,
+        })
+      } else {
+        mark(cursor, { kind: "log", dot: COLOR.engine, real: ev.t1, msg: "Motor monta o plano de execução" })
+      }
+      cursor += PLAN_DUR
       i++
       continue
     }
@@ -243,13 +307,21 @@ export function compile(events: TraceEvent[]): Timeline {
       group.forEach((s0, k) => {
         const s = cursor + k * SEL_STAGGER
         const dwell = dwellOf(s0, 200)
-        particles.push({ t: s, dur: TRAVEL, from: "__ENGINE__", to: s0.endpoint_id!, color: COLOR.select, label: tp })
+        selTotal++
+        particles.push({
+          t: s, dur: TRAVEL, from: "__ENGINE__", to: s0.endpoint_id!, color: COLOR.select, label: tp,
+          tip: { title: `SELECT ${tp} → ${s0.endpoint_id}`, body: tpText.get(tp) ?? s0.sparql ?? "" },
+        })
         mark(s, { kind: "op", op: "SELECT", tp, endpoint: s0.endpoint_id!, sparql: s0.sparql!, status: "em voo…", realDur: s0.t1 - s0.t0 })
         mark(s, { kind: "count", counter: "sel", delta: 1 })
         const back = s + TRAVEL + dwell
         particles.push({
           t: back, dur: TRAVEL, from: s0.endpoint_id!, to: "__ENGINE__",
           color: COLOR.select, label: fmt.format(s0.rows!), big: (s0.rows ?? 0) > 0,
+          tip: {
+            title: `${s0.endpoint_id} → motor (SELECT ${tp})`,
+            body: `${fmt.format(s0.rows!)} linha(s) de bindings em ${((s0.t1 - s0.t0) * 1000).toFixed(0)}ms reais`,
+          },
         })
         const arrive = back + TRAVEL
         mark(arrive, {
@@ -270,6 +342,7 @@ export function compile(events: TraceEvent[]): Timeline {
       mark(cursor, { kind: "pulse", node: "__ENGINE__" })
       mark(cursor, { kind: "set", counter: "bind", value: fmt.format(ev.out!) })
       const isSeed = ev.left === 0 || (ev.left === 1 && !(ev.left_vars ?? []).length)
+      if (!isSeed) joinTotal++
       const shared = ev.shared_vars?.length ? ` em ?${ev.shared_vars.join(", ?")}` : ""
       const msg = isSeed
         ? `${ev.tp_id} semeia o resultado com ${fmt.format(ev.out!)} binding(s)`
@@ -394,9 +467,14 @@ export function compile(events: TraceEvent[]): Timeline {
 
     if (ev.type === "run_complete") {
       closePhase()
-      phase("resposta", COLOR.ok)
+      phase("results", "resposta", COLOR.ok)
+      finalRows = ev.rows ?? null
+      totalSeconds = ev.total_seconds ?? null
       mark(cursor, { kind: "tpActive", tp: null })
-      particles.push({ t: cursor, dur: 550, from: "__ENGINE__", to: "__CLIENT__", color: COLOR.ok, label: `${fmt.format(ev.rows!)} linhas`, big: true })
+      particles.push({
+        t: cursor, dur: 550, from: "__ENGINE__", to: "__CLIENT__", color: COLOR.ok, label: `${fmt.format(ev.rows!)} linhas`, big: true,
+        tip: { title: "Resposta final ao cliente", body: `${fmt.format(ev.rows!)} linha(s) · ${ev.http_requests} req. HTTP · ${ev.total_seconds!.toFixed(2)}s reais` },
+      })
       const arrive = cursor + 550
       mark(arrive, { kind: "pulse", node: "__CLIENT__" })
       mark(arrive, { kind: "phase", label: "concluído ✓", engineStatus: "" })
@@ -415,7 +493,7 @@ export function compile(events: TraceEvent[]): Timeline {
 
     if (ev.type === "error") {
       closePhase()
-      phase("erro", COLOR.err)
+      phase("error", "erro", COLOR.err)
       mark(cursor, { kind: "phase", label: "erro ✕", engineStatus: "" })
       mark(cursor, { kind: "error", message: ev.message ?? "erro desconhecido" })
       mark(cursor, { kind: "log", dot: COLOR.err, real: ev.t1, msg: `Erro: ${ev.message}` })
@@ -429,6 +507,15 @@ export function compile(events: TraceEvent[]): Timeline {
   }
 
   closePhase()
+
+  // Métricas de resumo por fase (chips do stepper).
+  for (const p of phases) {
+    if (p.id === "sources") p.metric = `${askTotal} ASKs · ${askPos} ✓${sourcesSeconds != null ? ` · ${sourcesSeconds.toFixed(2)}s` : ""}`
+    else if (p.id === "planning" && planSummary) p.metric = planSummary
+    else if (p.id === "execution") p.metric = `${selTotal} SELECTs · ${joinTotal} join(s)`
+    else if (p.id === "results" && finalRows != null) p.metric = `${fmt.format(finalRows)} linha(s)${totalSeconds != null ? ` · ${totalSeconds.toFixed(2)}s` : ""}`
+  }
+
   marks.sort((a, b) => a.t - b.t)
   return { particles, marks, phases, steps, total: cursor }
 }
