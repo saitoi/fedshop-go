@@ -128,3 +128,18 @@
     @apply font-sans;
     }
 }
+/* Pulso do MOTOR no grafo: anel que expande e some (r é animável como
+   propriedade CSS de geometria SVG nos navegadores modernos). */
+@keyframes graph-pulse {
+  from {
+    r: 42px;
+    opacity: 0.6;
+  }
+  to {
+    r: 62px;
+    opacity: 0;
+  }
+}
+.graph-pulse {
+  animation: graph-pulse 500ms ease-out forwards;
+}
