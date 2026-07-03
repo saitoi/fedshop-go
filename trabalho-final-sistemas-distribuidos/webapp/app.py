@@ -8,6 +8,7 @@ executar → gravar → reproduzir).
 from __future__ import annotations
 
 import re
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -16,9 +17,17 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import go_engine
+import infra
 import tracer
 
-app = FastAPI(title="FedQuery Visualizer")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    infra.ensure_infra()
+    yield
+
+
+app = FastAPI(title="FedQuery Visualizer", lifespan=lifespan)
 
 _HERE = Path(__file__).parent
 _FEDSHOP_PY = _HERE.parent / "fedshop-py"
