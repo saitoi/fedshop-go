@@ -38,7 +38,17 @@ from .config import BenchmarkConfig
 from .sparql import SparqlClient
 
 PANDAS_RANDOM_STATE = 42
-_SOURCE_LOCAL_REFERENCE_QUERIES = {"q06", "q08", "q09", "q10", "q11", "q12"}
+_SOURCE_LOCAL_REFERENCE_QUERIES = {
+    "q02",
+    "q05",
+    "q06",
+    "q07",
+    "q08",
+    "q09",
+    "q10",
+    "q11",
+    "q12",
+}
 
 
 # ─── Internal helpers ────────────────────────────────────────────────────────
@@ -66,6 +76,7 @@ def _export_query(algebra, options: dict, *, outfile: Path | None = None) -> str
     with StringIO(query) as f:
         lines = [line for line in f.readlines() if line.strip()]
     query = "".join(lines)
+    query = _re.sub(r"(?is)\s*OPTIONAL\s*\{\s*\}", "", query)
 
     if not query.strip():
         raise RuntimeError("Empty query after translation")
@@ -206,6 +217,16 @@ def build_value_selection_query(
                 results = _traverseAgg(pred_node, find_prefix) if isinstance(pred_node, CompValue) else []
                 return results[0] if results else ""
 
+            def _pred_local(pred_node) -> str:
+                """Extract the local predicate name from a parsed predicate CompValue."""
+                def find_local(node, children):
+                    from itertools import chain
+                    if isinstance(node, CompValue) and node.name == "pname":
+                        return [node.get("localname", "")]
+                    return list(chain(*children))
+                results = _traverseAgg(pred_node, find_local) if isinstance(pred_node, CompValue) else []
+                return results[0] if results else ""
+
             def _filter_to_const_triples(node, _sv=frozenset(subq_vars)):
                 if isinstance(node, CompValue) and node.name == "TriplesBlock":
                     triples = node["triples"]
@@ -213,6 +234,33 @@ def build_value_selection_query(
                         t for t in triples
                         if any(isinstance(c, Variable) and str(c) in _sv for c in t)
                     ]
+                    if (
+                        len(triples) == 1
+                        and len(anchor) == 1
+                        and _pred_local(anchor[0][1]).startswith("productProperty")
+                    ):
+                        return CompValue("Placeholder", old=node)
+                    capped_anchor = False
+                    if len(anchor) > 4:
+                        selector_locals = {
+                            "product",
+                            "productFeature",
+                            "producer",
+                            "reviewFor",
+                            "type",
+                        }
+                        preferred = [
+                            t for t in anchor
+                            if (
+                                _pred_prefix(t[1]) not in _common_prefixes
+                                and _pred_local(t[1]) in selector_locals
+                            ) or (
+                                _pred_prefix(t[1]) == "rdf"
+                                and _pred_local(t[1]) == "type"
+                            )
+                        ]
+                        anchor = preferred[:2] or anchor[:1]
+                        capped_anchor = True
                     anchor_subs = {str(t[0]) for t in anchor if isinstance(t[0], Variable)}
                     anchor_sub_obj_vars = anchor_subs | {
                         str(t[2]) for t in anchor if isinstance(t[2], Variable)
@@ -223,13 +271,41 @@ def build_value_selection_query(
                         and isinstance(t[0], Variable) and str(t[0]) in anchor_subs
                         and not isinstance(t[2], Variable)
                     ]
+                    sameas_locals = {
+                        str(t[0]) for t in anchor
+                        if (
+                            isinstance(t[0], Variable)
+                            and isinstance(t[2], Variable)
+                            and str(t[2]) in _sv
+                            and _pred_prefix(t[1]) == "owl"
+                            and _pred_local(t[1]) == "sameAs"
+                        )
+                    }
+                    sameas_incoming = []
+                    sameas_seen: set[str] = set()
+                    for t in triples:
+                        if t in anchor or t in type_triples:
+                            continue
+                        obj = str(t[2]) if isinstance(t[2], Variable) else None
+                        pred_prefix = _pred_prefix(t[1])
+                        pred_local = _pred_local(t[1])
+                        if (
+                            obj in sameas_locals
+                            and obj not in sameas_seen
+                            and (
+                                pred_prefix not in _common_prefixes
+                                or (pred_prefix == "rdf" and pred_local == "type")
+                            )
+                        ):
+                            sameas_incoming.append(t)
+                            sameas_seen.add(obj)
                     # Keep one incoming domain edge for resources identified by
                     # an owl:sameAs anchor.  This distinguishes, for example,
                     # reviewed products from producers (q08) and products
                     # referenced by offers from producers (q10).
                     incoming = []
                     incoming_targets: set[str] = set()
-                    for t in triples:
+                    for t in ([] if capped_anchor else triples):
                         if t in anchor or t in type_triples:
                             continue
                         obj = str(t[2]) if isinstance(t[2], Variable) else None
@@ -246,20 +322,24 @@ def build_value_selection_query(
                     # and only if the object variable is fresh (not another anchor subject).
                     seen_subs: set = set()
                     disambig = []
-                    for t in triples:
+                    for t in ([] if capped_anchor else triples):
                         if t in anchor or t in type_triples:
                             continue
                         sub = str(t[0]) if isinstance(t[0], Variable) else None
                         obj_var = str(t[2]) if isinstance(t[2], Variable) else None
                         if (sub and sub in anchor_subs and sub not in seen_subs
                                 and _pred_prefix(t[1]) not in _common_prefixes
-                                and (obj_var is None or obj_var not in anchor_sub_obj_vars)):
+                            and (obj_var is None or obj_var not in anchor_sub_obj_vars)):
                             disambig.append(t)
                             seen_subs.add(sub)
-                    kept = anchor + type_triples + incoming + disambig
+                    kept = anchor + type_triples + sameas_incoming + incoming + disambig
                     if not kept:
                         return CompValue("Placeholder", old=node)
-                    node["triples"] = kept
+                    deduped = []
+                    for triple in kept:
+                        if triple not in deduped:
+                            deduped.append(triple)
+                    node["triples"] = deduped
                 return node
 
             subq_bgp_algebra = traverse(subq_bgp_algebra, visitPost=_filter_to_const_triples)
@@ -612,6 +692,7 @@ def generate_queries_for_template(
             injected,
             reference_endpoint,
             sparql_client=sparql_client,
+            timeout=120,
             scoped_endpoints=(
                 fallback_endpoints
                 if _uses_source_local_reference(template_path.stem)

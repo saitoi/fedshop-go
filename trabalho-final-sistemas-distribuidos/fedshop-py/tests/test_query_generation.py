@@ -10,8 +10,10 @@ import pytest
 @pytest.mark.parametrize(
     ("query_name", "expected"),
     [
+        ("q02", True),
+        ("q05", True),
         ("q06", True),
-        ("q07", False),
+        ("q07", True),
         ("q08", True),
         ("q09", True),
         ("q10", True),
@@ -37,6 +39,13 @@ def test_q08_value_selection_keeps_relation_that_identifies_products():
     generated = "\n".join(item["query"] for item in selection.values())
 
     assert "http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/reviewFor" in generated
+
+
+def test_q08_template_does_not_filter_missing_language_tags():
+    root = __import__("pathlib").Path(__file__).parents[1]
+    query = (root / "inputs" / "queries" / "q08.sparql").read_text()
+
+    assert "langMatches" not in query
 
 
 def test_q10_value_selection_keeps_relation_that_identifies_products():
@@ -67,6 +76,37 @@ def test_q04_value_selection_keeps_product_type_join():
     assert "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in generated
 
 
+def test_q01_value_selection_keeps_product_type_join():
+    """ProductType candidates must stay connected to the same product as features."""
+    from fedshop.query import build_value_selection_query
+
+    root = __import__("pathlib").Path(__file__).parents[1]
+    query = (root / "inputs" / "queries" / "q01.sparql").read_text()
+    constants = json.loads((root / "inputs" / "queries" / "q01.const.json").read_text())
+
+    selection = build_value_selection_query(query, constants)
+    generated = "\n".join(item["query"] for item in selection.values())
+
+    assert "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in generated
+    assert "?localProductType" in generated
+
+
+def test_q02_value_selection_uses_bounded_product_selector():
+    """The q02 product constant is central; selecting it with every property times out."""
+    from fedshop.query import build_value_selection_query
+
+    root = __import__("pathlib").Path(__file__).parents[1]
+    query = (root / "inputs" / "queries" / "q02.sparql").read_text()
+    constants = json.loads((root / "inputs" / "queries" / "q02.const.json").read_text())
+
+    selection = build_value_selection_query(query, constants)
+    generated = "\n".join(item["query"] for item in selection.values())
+
+    assert "http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature" in generated
+    assert "http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyTextual1" not in generated
+    assert "OPTIONAL" not in generated
+
+
 def test_q10_value_selection_keeps_offer_constraints():
     """ProductXYZ candidates must satisfy the non-constant offer constraints."""
     from fedshop.query import build_value_selection_query
@@ -82,6 +122,23 @@ def test_q10_value_selection_keeps_offer_constraints():
     assert "http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/country" in generated
     assert "http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/deliveryDays" in generated
     assert "deliveryDays" in generated
+
+
+@pytest.mark.parametrize(
+    ("query_name", "forbidden"),
+    [
+        ("q02", "?localProduct owl:sameAs ?product"),
+        ("q05", "?localProductXYZ owl:sameAs ?ProductXYZ"),
+        ("q05", "?localProduct owl:sameAs ?product"),
+        ("q07", "?localProduct owl:sameAs ?ProductXYZ"),
+        ("q08", "?localProductXYZ owl:sameAs ?ProductXYZ"),
+    ],
+)
+def test_product_constants_are_source_local_not_sameas_anchors(query_name, forbidden):
+    root = __import__("pathlib").Path(__file__).parents[1]
+    query = (root / "inputs" / "queries" / f"{query_name}.sparql").read_text()
+
+    assert forbidden not in " ".join(query.split())
 
 
 def test_value_selection_falls_back_to_graph_scoped_endpoints():
@@ -215,6 +272,7 @@ def test_batch_zero_regenerates_empty_cached_workload(config_small, tmp_path):
         "http://localhost:8890/sparql?"
         "default-graph-uri=http://www.ratingsite0.fr/"
     ]
+    assert reference.call_args_list[0].kwargs["timeout"] == 120
     assert (output / "instance_0" / "injected.sparql").exists()
     assert not (output / "instance_1" / "injected.sparql").exists()
     assert len(pd.read_csv(output / "workload_value_selection.csv")) == 2

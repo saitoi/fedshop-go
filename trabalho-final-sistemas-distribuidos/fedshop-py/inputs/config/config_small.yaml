@@ -30,7 +30,7 @@ evaluation:
   timeout: 120
   engines:
     pyfedx:
-      dir: ../../scripts
+      dir: ../pyfedx
     fedshop-go:
       dir: ../../go-engine
       selector: ask

@@ -19,12 +19,12 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# Localiza scripts/pyfedx.py — configurável via PYFEDX_PATH
-_DEFAULT_SCRIPTS = str(Path(__file__).parent.parent.parent / "scripts")
+# Localiza trabalho-final-sistemas-distribuidos/pyfedx/pyfedx.py — configurável via PYFEDX_PATH
+_DEFAULT_SCRIPTS = str(Path(__file__).parent.parent / "pyfedx")
 _SCRIPTS_DIR = os.environ.get("PYFEDX_PATH", _DEFAULT_SCRIPTS)
 sys.path.insert(0, _SCRIPTS_DIR)
 
-import pyfedx  # noqa: E402
+import pyfedx_engine as pyfedx  # noqa: E402
 
 SAMPLE_ROWS = 5
 JOIN_SAMPLE_ROWS = 25  # amostras maiores para a aba de detalhe de joins
@@ -262,6 +262,51 @@ def _bound_vars(rows: List[Dict[str, str]]) -> set:
     return out
 
 
+def traced_execute_endpoint_bgp(
+    triples: List[pyfedx.Triple],
+    filters: List[str],
+    source_map: Dict[pyfedx.Triple, List[pyfedx.Endpoint]],
+    client: TracedClient,
+    prefixes: Dict[str, str],
+    trace: Trace,
+) -> Optional[List[Dict[str, str]]]:
+    """Push a whole BGP+FILTER to endpoints that can answer every triple."""
+    if not triples:
+        return []
+    if any("owl#sameAs>" in triple.predicate for triple in triples):
+        return None
+
+    common: Optional[set] = None
+    by_eid: Dict[str, pyfedx.Endpoint] = {}
+    for triple in triples:
+        sources = source_map.get(triple, [])
+        if not sources:
+            return []
+        eids = {endpoint.eid for endpoint in sources}
+        by_eid.update({endpoint.eid: endpoint for endpoint in sources})
+        common = eids if common is None else common & eids
+        if not common:
+            return None
+
+    variables = pyfedx.unique(var for triple in triples for var in triple.variables())
+    sparql = pyfedx.select_group_query(prefixes, triples, filters, variables)
+    rows: List[Dict[str, str]] = []
+    for eid in sorted(common or []):
+        rows.extend(client.traced_select(by_eid[eid], sparql, "bgp"))
+    rows = pyfedx.distinct_rows(rows)
+    _check_size(rows, "pushdown BGP")
+    trace.emit(
+        "bgp_pushdown",
+        triples=[triple.key() for triple in triples],
+        filters=filters,
+        sources=sorted(common or []),
+        rows=len(rows),
+        sample=_clean_rows(rows, JOIN_SAMPLE_ROWS),
+        out_vars=sorted(_bound_vars(rows)),
+    )
+    return rows
+
+
 def traced_execute_bgp(
     triples: List[pyfedx.Triple],
     source_map: Dict[pyfedx.Triple, List[pyfedx.Endpoint]],
@@ -271,19 +316,9 @@ def traced_execute_bgp(
     trace: Trace,
 ) -> List[Dict[str, str]]:
     result: List[Dict[str, str]] = []
-    # Ordenação por conectividade: começa pelo padrão com menos fontes e sempre
-    # escolhe em seguida um padrão que compartilha variável com as já ligadas
-    # (evita produto cartesiano; desempate por menos fontes). O pyfedx original
-    # ordena só por nº de fontes, o que explode em consultas como a q05.
-    remaining = sorted(triples, key=lambda t: len(source_map.get(t, [])))
-    ordered: List[pyfedx.Triple] = []
-    bound: set = set()
-    while remaining:
-        connected = [t for t in remaining if bound & set(t.variables())]
-        pick = connected[0] if connected else remaining[0]
-        remaining.remove(pick)
-        ordered.append(pick)
-        bound.update(pick.variables())
+    # Mesma ordenação do PyFedX modular: começa pelo padrão com menos fontes e
+    # mantém a ordem conectada quando há uma tripla que compartilha variáveis.
+    ordered = pyfedx.order_triples(triples, source_map, "connected-source-count")
     for order, triple in enumerate(ordered, 1):
         sources = source_map.get(triple, [])
         tp_id = tp_ids[triple]
@@ -331,7 +366,15 @@ def traced_execute_group(
     tp_ids: Dict[pyfedx.Triple, str],
     trace: Trace,
 ) -> List[Dict[str, str]]:
-    result = traced_execute_bgp(group.triples, source_map, client, prefixes, tp_ids, trace)
+    endpoint_result: Optional[List[Dict[str, str]]] = None
+    if group.triples and group.filters and not group.optionals and not group.unions:
+        endpoint_result = traced_execute_endpoint_bgp(
+            group.triples, group.filters, source_map, client, prefixes, trace
+        )
+    if endpoint_result is not None:
+        result = endpoint_result
+    else:
+        result = traced_execute_bgp(group.triples, source_map, client, prefixes, tp_ids, trace)
 
     for arm1, arm2 in group.unions:
         rows1 = traced_execute_group(arm1, source_map, client, prefixes, tp_ids, trace)
