@@ -1,5 +1,7 @@
 {
     "ProductXYZ": {},
+    "vendor": {},
+    "deliveryDays": {},
     "currentDate": {
         "query": "`currentDate` < `date`"
     }

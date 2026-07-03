@@ -53,6 +53,37 @@ def test_q10_value_selection_keeps_relation_that_identifies_products():
     assert "http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/product" in generated
 
 
+def test_q04_value_selection_keeps_product_type_join():
+    """ProductType candidates must stay connected through rdf:type."""
+    from fedshop.query import build_value_selection_query
+
+    root = __import__("pathlib").Path(__file__).parents[1]
+    query = (root / "inputs" / "queries" / "q04.sparql").read_text()
+    constants = json.loads((root / "inputs" / "queries" / "q04.const.json").read_text())
+
+    selection = build_value_selection_query(query, constants)
+    generated = "\n".join(item["query"] for item in selection.values())
+
+    assert "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in generated
+
+
+def test_q10_value_selection_keeps_offer_constraints():
+    """ProductXYZ candidates must satisfy the non-constant offer constraints."""
+    from fedshop.query import build_value_selection_query
+
+    root = __import__("pathlib").Path(__file__).parents[1]
+    query = (root / "inputs" / "queries" / "q10.sparql").read_text()
+    constants = json.loads((root / "inputs" / "queries" / "q10.const.json").read_text())
+
+    selection = build_value_selection_query(query, constants)
+    generated = "\n".join(item["query"] for item in selection.values())
+
+    assert "http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/vendor" in generated
+    assert "http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/country" in generated
+    assert "http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/deliveryDays" in generated
+    assert "deliveryDays" in generated
+
+
 def test_value_selection_falls_back_to_graph_scoped_endpoints():
     from fedshop.query import sample_workload_values
 

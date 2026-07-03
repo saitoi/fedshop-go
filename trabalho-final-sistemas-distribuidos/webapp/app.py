@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import go_engine
 import tracer
 
 app = FastAPI(title="FedQuery Visualizer")
@@ -90,7 +91,16 @@ def list_configs() -> JSONResponse:
 class ExecuteRequest(BaseModel):
     query: str
     config_id: str = "batch0"
+    engine: str = "pyfedx"
     timeout: float = 60.0
+
+
+@app.get("/api/engines")
+def list_engines() -> JSONResponse:
+    engines = [{"id": "pyfedx", "label": "pyfedx (Python)"}]
+    if go_engine.BINARY.exists():
+        engines.append({"id": "fedshop-go", "label": "fedshop-go (Go, bound join)"})
+    return JSONResponse(engines)
 
 
 @app.post("/api/execute")
@@ -104,7 +114,13 @@ def execute(req: ExecuteRequest) -> JSONResponse:
     if not config_path.exists():
         raise HTTPException(status_code=404, detail=f"Config '{req.config_id}' não encontrado")
 
-    result = tracer.run_traced(
-        req.query, config_path.read_text(), timeout=min(req.timeout, 300.0)
-    )
+    timeout = min(req.timeout, 300.0)
+    config_text = config_path.read_text()
+    if req.engine == "fedshop-go":
+        result = go_engine.run_traced(req.query, config_text, timeout=timeout)
+    elif req.engine == "pyfedx":
+        result = tracer.run_traced(req.query, config_text, timeout=timeout)
+    else:
+        raise HTTPException(status_code=400, detail=f"engine '{req.engine}' desconhecido")
+    result["engine"] = req.engine
     return JSONResponse(result)

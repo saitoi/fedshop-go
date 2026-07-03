@@ -27,6 +27,7 @@ sys.path.insert(0, _SCRIPTS_DIR)
 import pyfedx  # noqa: E402
 
 SAMPLE_ROWS = 5
+JOIN_SAMPLE_ROWS = 25  # amostras maiores para a aba de detalhe de joins
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +292,11 @@ def traced_execute_bgp(
             sources=[e.eid for e in sources],
         )
         if not sources:
-            trace.emit("join", tp_id=tp_id, left=len(result), right=0, out=0, shared_vars=[])
+            trace.emit(
+                "join", tp_id=tp_id, left=len(result), right=0, out=0, shared_vars=[],
+                left_sample=_clean_rows(result, JOIN_SAMPLE_ROWS), right_sample=[], sample=[],
+                left_vars=sorted(_bound_vars(result)), right_vars=triple.variables(), out_vars=[],
+            )
             return []
         vars_ = triple.variables()
         union_rows: List[Dict[str, str]] = []
@@ -301,12 +306,17 @@ def traced_execute_bgp(
         _check_size(union_rows, f"SELECTs de {tp_id}")
         shared = sorted(_bound_vars(result) & set(vars_)) if result else []
         left_size = len(result)
+        left_sample = _clean_rows(result, JOIN_SAMPLE_ROWS)
+        left_vars = sorted(_bound_vars(result))
         result = hash_join(result, union_rows)
         _check_size(result, f"join de {tp_id}")
         trace.emit(
             "join", tp_id=tp_id,
             left=left_size, right=len(union_rows), out=len(result),
-            shared_vars=shared, sample=_clean_rows(result),
+            shared_vars=shared,
+            left_sample=left_sample, right_sample=_clean_rows(union_rows, JOIN_SAMPLE_ROWS),
+            sample=_clean_rows(result, JOIN_SAMPLE_ROWS),
+            left_vars=left_vars, right_vars=vars_, out_vars=sorted(_bound_vars(result)),
         )
         if not result:
             return []
@@ -334,18 +344,28 @@ def traced_execute_group(
             "union_merge",
             arm1=len(rows1), arm2=len(rows2), merged=len(union_rows),
             left=before, out=len(result),
+            sample=_clean_rows(result, JOIN_SAMPLE_ROWS),
+            out_vars=sorted(_bound_vars(result)),
         )
 
     for opt in group.optionals:
         opt_result = traced_execute_group(opt, source_map, client, prefixes, tp_ids, trace)
         before = len(result)
         result = pyfedx.left_outer_join(result, opt_result)
-        trace.emit("optional_join", left=before, right=len(opt_result), out=len(result))
+        trace.emit(
+            "optional_join", left=before, right=len(opt_result), out=len(result),
+            sample=_clean_rows(result, JOIN_SAMPLE_ROWS),
+            out_vars=sorted(_bound_vars(result)),
+        )
 
     for f in group.filters:
         before = len(result)
         result = [row for row in result if pyfedx.eval_filter(f, row)]
-        trace.emit("filter", expr=f, before=before, after=len(result))
+        trace.emit(
+            "filter", expr=f, before=before, after=len(result),
+            sample=_clean_rows(result, JOIN_SAMPLE_ROWS),
+            out_vars=sorted(_bound_vars(result)),
+        )
 
     return result
 

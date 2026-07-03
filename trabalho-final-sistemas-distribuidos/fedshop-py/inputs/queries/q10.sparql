@@ -6,8 +6,7 @@ PREFIX owl: <http://www.w3.org/2002/07/owl#>
 SELECT DISTINCT ?offer ?price
 WHERE {
     # const ?ProductXYZ
-    ?offer bsbm:product ?localProductXYZ .
-    ?localProductXYZ owl:sameAs ?ProductXYZ .
+    ?offer bsbm:product ?ProductXYZ .
     ?offer bsbm:vendor ?vendor .
     #?offer dc:publisher ?vendor .
     ?vendor bsbm:country <http://downlode.org/rdf/iso-3166/countries#US> .
