@@ -75,6 +75,7 @@ func runQuery(ctx context.Context, args []string, stderr io.Writer) int {
 	set.BoolVar(&options.ExclusiveGroups, "exclusive-groups", false, "combine patterns assigned to one endpoint")
 	set.IntVar(&options.PostBindMaxInputRows, "post-bind-max-input-rows", 0, "skip post-bind exclusive group when input rows exceed this (0=unlimited)")
 	set.BoolVar(&options.NoExec, "noexec", false, "plan without executing SELECT requests")
+	set.StringVar(&options.TracePath, "trace", "", "write a visualization event trace JSON to this path")
 	if err := set.Parse(args); err != nil {
 		return 2
 	}

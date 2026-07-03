@@ -32,6 +32,51 @@ type Options struct {
 	ExclusiveGroups        bool
 	MaxConcurrency         int
 	PostBindMaxInputRows   int // 0 = unlimited; skip post-bind group when input rows exceed this
+	// Trace, when set, receives visualization events (join/filter/union/...).
+	Trace func(eventType string, t0 float64, fields map[string]any)
+}
+
+const traceSampleRows = 25
+
+// SampleRows converts up to n bindings to plain string maps for trace payloads.
+func SampleRows(rows []Binding, n int) []map[string]string {
+	if n > len(rows) {
+		n = len(rows)
+	}
+	out := make([]map[string]string, 0, n)
+	for _, row := range rows[:n] {
+		flat := make(map[string]string, len(row))
+		for name, value := range row {
+			if value.Bound {
+				flat[name] = value.Lexical
+			}
+		}
+		out = append(out, flat)
+	}
+	return out
+}
+
+func boundVarNames(rows []Binding) []string {
+	seen := map[string]bool{}
+	for _, row := range rows {
+		for name, value := range row {
+			if value.Bound {
+				seen[name] = true
+			}
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (e *Executor) trace(eventType string, fields map[string]any) {
+	if e.options.Trace != nil {
+		e.options.Trace(eventType, -1, fields)
+	}
 }
 
 // Stats describes physical execution work.
@@ -118,6 +163,15 @@ func (e *Executor) Execute(ctx context.Context, query sparql.Query, selection fe
 	if query.Limit >= 0 && start+query.Limit < end {
 		end = start + query.Limit
 	}
+	orderBy := make([][2]any, 0, len(query.OrderBy))
+	for _, cond := range query.OrderBy {
+		orderBy = append(orderBy, [2]any{strings.TrimPrefix(cond.Expression, "?"), cond.Ascending})
+	}
+	e.trace("postprocess", map[string]any{
+		"distinct": query.Distinct, "before_distinct": len(rows),
+		"order_by": orderBy, "limit": query.Limit,
+		"before_limit": len(projected), "final": end - start,
+	})
 	return projected[start:end], stats, nil
 }
 
@@ -182,6 +236,11 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 		} else {
 			rows = remote
 		}
+		e.trace("note", map[string]any{
+			"msg":  fmt.Sprintf("grupo exclusivo: todos os padrões atribuídos a %s executados numa única consulta → %d linhas", endpoint.ID, len(rows)),
+			"out":  len(rows),
+			"sample": SampleRows(rows, traceSampleRows),
+		})
 		startAt = len(triples)
 	}
 	remaining := triples[startAt:]
@@ -197,6 +256,7 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 			if groupLen := detectFilterGroup(remaining[i:], filterOnlyVars, varCount, rows); groupLen >= 2 {
 				var s Stats
 				var err error
+				rowsBeforeFilterGroup := len(rows)
 				rows, pendingFilters, s, err = e.executeFilterGroup(
 					ctx, remaining[i:i+groupLen], selection, rows, scalarSets, pendingFilters)
 				stats = addStats(stats, s)
@@ -210,6 +270,12 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 					fmt.Fprintf(os.Stderr, "[exec] filter-group(tp%d..tp%d) → %d rows\n",
 						remaining[i].ID, remaining[i+groupLen-1].ID, len(rows))
 				}
+				e.trace("filter", map[string]any{
+					"expr":   fmt.Sprintf("grupo de filtros tp%d..tp%d (propriedades só de filtro, sem join multiplicativo)", remaining[i].ID, remaining[i+groupLen-1].ID),
+					"before": rowsBeforeFilterGroup, "after": len(rows),
+					"sample":   SampleRows(rows, traceSampleRows),
+					"out_vars": boundVarNames(rows),
+				})
 				i += groupLen - 1 // skip grouped triples (loop will i++)
 				continue
 			}
@@ -217,6 +283,9 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 
 		sources := selection[triple.ID]
 		if len(sources) == 0 {
+			e.trace("tp_exec", map[string]any{
+				"tp_id": fmt.Sprintf("tp%d", triple.ID), "order": i + 1, "sources": []string{},
+			})
 			return nil, stats, nil
 		}
 		// If the triple's subject is uniformly bound to an IRI that maps to exactly one
@@ -234,6 +303,13 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 				pushFilters = derivePushableFilters(pendingFilters, rows, triple, constants)
 			}
 		}
+		sourceIDs := make([]string, 0, len(sources))
+		for _, src := range sources {
+			sourceIDs = append(sourceIDs, src.ID)
+		}
+		e.trace("tp_exec", map[string]any{
+			"tp_id": fmt.Sprintf("tp%d", triple.ID), "order": i + 1, "sources": sourceIDs,
+		})
 		t0 := time.Now()
 		union, s, err := e.fetchTriple(ctx, triple, sources, rows, pushFilters...)
 		if debugExec {
@@ -272,9 +348,19 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 					}
 				}
 			}
+			e.trace("note", map[string]any{
+				"msg": fmt.Sprintf("tp%d coletado como conjunto escalar (%d valores, variável usada só em FILTER — evita join multiplicativo)", triple.ID, len(union)),
+			})
 			// No join: rows unchanged. Apply eligible filters using scalar sets.
 			if len(pendingFilters) > 0 {
+				beforeEligible := len(rows)
 				pendingFilters, rows = applyEligibleFiltersScalar(pendingFilters, rows, scalarSets)
+				if len(rows) != beforeEligible {
+					e.trace("filter", map[string]any{
+						"expr": "filtros elegíveis (variáveis já ligadas)", "before": beforeEligible, "after": len(rows),
+						"sample": SampleRows(rows, traceSampleRows), "out_vars": boundVarNames(rows),
+					})
+				}
 				if len(rows) == 0 {
 					return nil, stats, nil
 				}
@@ -296,7 +382,22 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 			fmt.Fprintf(os.Stderr, "[exec] tp%d join key=%v left=%d(unique=%d) right=%d(unique=%d)\n",
 				triple.ID, shared, len(rows), len(uniqueLeft), len(union), len(uniqueRight))
 		}
+		leftSize := len(rows)
+		leftSample := SampleRows(rows, traceSampleRows)
+		leftVars := boundVarNames(rows)
+		var sharedVars []string
+		if len(rows) > 0 && len(union) > 0 {
+			sharedVars = joinVars(rows[0], union[0])
+		}
 		rows = join(rows, union)
+		e.trace("join", map[string]any{
+			"tp_id": fmt.Sprintf("tp%d", triple.ID),
+			"left":  leftSize, "right": len(union), "out": len(rows),
+			"shared_vars": sharedVars,
+			"left_sample": leftSample, "right_sample": SampleRows(union, traceSampleRows),
+			"sample":    SampleRows(rows, traceSampleRows),
+			"left_vars": leftVars, "right_vars": triple.Variables(), "out_vars": boundVarNames(rows),
+		})
 		if debugExec {
 			fmt.Fprintf(os.Stderr, "[exec] tp%d join → %d rows in %v\n", triple.ID, len(rows), time.Since(t1))
 		}
@@ -305,7 +406,14 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 		}
 		// Eager filter: apply any pending filter whose variables are all now bound.
 		if len(pendingFilters) > 0 {
+			beforeEligible := len(rows)
 			pendingFilters, rows = applyEligibleFiltersScalar(pendingFilters, rows, scalarSets)
+			if len(rows) != beforeEligible {
+				e.trace("filter", map[string]any{
+					"expr": "filtros elegíveis (variáveis já ligadas)", "before": beforeEligible, "after": len(rows),
+					"sample": SampleRows(rows, traceSampleRows), "out_vars": boundVarNames(rows),
+				})
+			}
 			if len(rows) == 0 {
 				return nil, stats, nil
 			}
@@ -329,7 +437,12 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 					}
 				} else {
 					remote = distinct(remote, nil)
+					before := len(rows)
 					rows = join(rows, remote)
+					e.trace("note", map[string]any{
+						"msg": fmt.Sprintf("grupo exclusivo pós-bind: padrões restantes executados juntos em %s (%d ⋈ %d → %d linhas)", ep.ID, before, len(remote), len(rows)),
+						"out": len(rows), "sample": SampleRows(rows, traceSampleRows),
+					})
 				}
 				for _, f := range pendingFilters {
 					kept := rows[:0]
@@ -376,8 +489,13 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 					merged = append(merged, join(g.rows, remote)...)
 				}
 				rows = distinct(merged, nil)
+				e.trace("note", map[string]any{
+					"msg": fmt.Sprintf("consulta composta por endpoint: %d grupos executados → %d linhas", len(groups), len(rows)),
+					"out": len(rows), "sample": SampleRows(rows, traceSampleRows),
+				})
 				for _, f := range pendingFilters {
 					kept := rows[:0]
+					before := len(rows)
 					for _, row := range rows {
 						ok, ferr := evalFilterWithScalars(f, row, scalarSets)
 						if ferr != nil {
@@ -388,6 +506,10 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 						}
 					}
 					rows = kept
+					e.trace("filter", map[string]any{
+						"expr": f, "before": before, "after": len(rows),
+						"sample": SampleRows(rows, traceSampleRows), "out_vars": boundVarNames(rows),
+					})
 				}
 				pendingFilters = nil
 				if debugExec {
@@ -409,6 +531,10 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 			return nil, stats, err
 		}
 		rows = append(left, right...)
+		e.trace("union_merge", map[string]any{
+			"arm1": len(left), "arm2": len(right), "merged": len(rows), "left": 0, "out": len(rows),
+			"sample": SampleRows(rows, traceSampleRows), "out_vars": boundVarNames(rows),
+		})
 	}
 	for _, optional := range group.Optionals {
 		optInputs := uniqueInputsForOptional(optional, rows)
@@ -417,11 +543,17 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 		if err != nil {
 			return nil, stats, err
 		}
+		before := len(rows)
 		rows = leftJoin(rows, right)
+		e.trace("optional_join", map[string]any{
+			"left": before, "right": len(right), "out": len(rows),
+			"sample": SampleRows(rows, traceSampleRows), "out_vars": boundVarNames(rows),
+		})
 	}
 	// Apply any filters not yet applied eagerly (e.g. those referencing OPTIONAL variables).
 	for _, filter := range pendingFilters {
 		kept := rows[:0]
+		before := len(rows)
 		for _, row := range rows {
 			ok, err := evalFilterWithScalars(filter, row, scalarSets)
 			if err != nil {
@@ -432,6 +564,10 @@ func (e *Executor) executeGroup(ctx context.Context, group *sparql.Group, select
 			}
 		}
 		rows = kept
+		e.trace("filter", map[string]any{
+			"expr": filter, "before": before, "after": len(rows),
+			"sample": SampleRows(rows, traceSampleRows), "out_vars": boundVarNames(rows),
+		})
 	}
 	return rows, stats, nil
 }

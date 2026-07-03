@@ -27,6 +27,15 @@ type Client struct {
 	backoff    time.Duration
 	requests   atomic.Int64
 	bytes      atomic.Int64
+	traceNow   func() float64
+	traceEmit  func(eventType string, t0 float64, fields map[string]any)
+}
+
+// SetTrace installs a visualization trace hook: now reports seconds since run
+// start and emit records one event (thread-safe on the tracer side).
+func (c *Client) SetTrace(now func() float64, emit func(string, float64, map[string]any)) {
+	c.traceNow = now
+	c.traceEmit = emit
 }
 
 // Option configures endpoint request behavior.
@@ -80,6 +89,10 @@ func (c *Client) Bytes() int64 { return c.bytes.Load() }
 // Ask implements federation.ASKClient.
 func (c *Client) Ask(ctx context.Context, endpoint federation.Endpoint, triple sparql.TriplePattern) (bool, error) {
 	query := "ASK WHERE { " + triple.Key() + " . }"
+	var t0 float64
+	if c.traceNow != nil {
+		t0 = c.traceNow()
+	}
 	body, err := c.do(ctx, endpoint.URL, query)
 	if err != nil {
 		return false, err
@@ -90,13 +103,43 @@ func (c *Client) Ask(ctx context.Context, endpoint federation.Endpoint, triple s
 	if err := json.Unmarshal(body, &response); err != nil {
 		return false, fmt.Errorf("decode ASK response: %w", err)
 	}
+	if c.traceEmit != nil {
+		c.traceEmit("ask", t0, map[string]any{
+			"tp_id":       fmt.Sprintf("tp%d", triple.ID),
+			"endpoint_id": endpoint.ID,
+			"sparql":      query,
+			"result":      response.Boolean,
+		})
+	}
 	return response.Boolean, nil
 }
 
 // Select implements executor.Client.
 func (c *Client) Select(ctx context.Context, endpoint federation.Endpoint, triples []sparql.TriplePattern, inputs []executor.Binding, filters ...string) ([]executor.Binding, error) {
 	query := buildSelect(triples, inputs, filters...)
-	return c.Query(ctx, endpoint, query)
+	var t0 float64
+	if c.traceNow != nil {
+		t0 = c.traceNow()
+	}
+	rows, err := c.Query(ctx, endpoint, query)
+	if err != nil {
+		return nil, err
+	}
+	if c.traceEmit != nil {
+		ids := make([]string, 0, len(triples))
+		for _, tp := range triples {
+			ids = append(ids, fmt.Sprintf("tp%d", tp.ID))
+		}
+		c.traceEmit("select", t0, map[string]any{
+			"tp_id":       strings.Join(ids, "+"),
+			"endpoint_id": endpoint.ID,
+			"sparql":      query,
+			"rows":        len(rows),
+			"inputs":      len(inputs),
+			"sample":      executor.SampleRows(rows, 5),
+		})
+	}
+	return rows, nil
 }
 
 // Query executes an arbitrary SELECT query for metadata construction.
