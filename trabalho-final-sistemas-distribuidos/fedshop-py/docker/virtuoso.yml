@@ -1,0 +1,25 @@
+services:
+  bsbm-virtuoso:
+    image: openlink/virtuoso-opensource-7:7.2.13-alpine
+    environment:
+      SPARQL_UPDATE: "false"
+      DBA_PASSWORD: "dba"
+      VIRT_HTTPServer_ServerThreads: 200
+      VIRT_HTTPServer_MaxClientConnections: 500
+      VIRT_SPARQL_MaxQueryCostEstimationTime: 0
+      VIRT_SPARQL_ResultSetMaxRows: 0
+      VIRT_SPARQL_MaxQueryExecutionTime: 0
+      VIRT_Parameters_NumberOfBuffers: 1360000
+      VIRT_Parameters_MaxDirtyBuffers: 1000000
+      VIRT_Parameters_MaxQueryMem: 2G
+      VIRT_Parameters_MaxClientConnections: 500
+      VIRT_Parameters_IndexTreeMaps: 256
+      VIRT_Parameters_CheckpointInterval: 0
+      VIRT_Parameters_DefaultIsolation: 1
+      VIRT_Parameters_ThreadCleanupInterval: 1
+      VIRT_Parameters_ResourcesCleanupInterval: 1
+    volumes:
+      - "../inputs/product-dataset:/usr/share/proj"
+    ports:
+      - 8890:8890
+      - 34200-34219:34200-34219

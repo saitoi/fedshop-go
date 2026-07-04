@@ -20,3 +20,23 @@ reference-repos/query-engines/*
 
 # Runtime logs
 err.log
+
+# Python artifacts
+__pycache__/
+.venv/
+
+# Heavy benchmark outputs / generated datasets (keep small query files)
+fedshop-py/benchmark/fedshop-go-complete/
+fedshop-py/benchmark/rerun-2026-06-30/
+fedshop-py/benchmark/run-2026-06-30-new/
+trabalho-final-sistemas-distribuidos/fedshop-py/benchmark/fedshop-go-complete/
+trabalho-final-sistemas-distribuidos/fedshop-py/benchmark/rerun-2026-06-30/
+trabalho-final-sistemas-distribuidos/fedshop-py/benchmark/run-2026-06-30-new/
+trabalho-final-sistemas-distribuidos/fedshop-py/benchmark/bin/
+trabalho-final-sistemas-distribuidos/fedshop-py/benchmark/*.duckdb
+trabalho-final-sistemas-distribuidos/fedshop-py/data/product/
+trabalho-final-sistemas-distribuidos/fedshop-py/data/tmp/
+trabalho-final-sistemas-distribuidos/fedshop-py/data/dataset/
+trabalho-final-sistemas-distribuidos/fedshop-py/inputs/data/
+trabalho-final-sistemas-distribuidos/fedshop-py/fedshop.duckdb
+trabalho-final-sistemas-distribuidos/fedshop-py/benchmark/generation/q02/

@@ -1,0 +1,15 @@
+[project]
+name = "fedquery-visualizer"
+version = "0.1.0"
+description = "Visualização animada do motor de consultas federado pyfedx"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+]
+
+[dependency-groups]
+dev = []
+
+# Para iniciar o servidor:
+#   cd webapp && uv run uvicorn app:app --reload --port 8000

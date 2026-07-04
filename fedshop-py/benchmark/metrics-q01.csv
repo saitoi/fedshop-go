@@ -1,0 +1,2 @@
+attempt,engine,status,query,instance,batch,nb_results,nb_distinct_sources,relevant_sources_selectivity,tpwss,avg_rwss,min_rwss,max_rwss
+0,fedshop-go,ok,q01,0,0,0,20,1.0,107.0,,,

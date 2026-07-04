@@ -4,16 +4,16 @@ services:
     environment:
       SPARQL_UPDATE: "false"
       DBA_PASSWORD: "dba"
-      VIRT_HTTPServer_ServerThreads: 8
-      VIRT_HTTPServer_MaxClientConnections: 8
+      VIRT_HTTPServer_ServerThreads: 200
+      VIRT_HTTPServer_MaxClientConnections: 500
       VIRT_SPARQL_MaxQueryCostEstimationTime: 0
       VIRT_SPARQL_ResultSetMaxRows: 0
       VIRT_SPARQL_MaxQueryExecutionTime: 0
-      VIRT_Parameters_NumberOfBuffers: 20000
-      VIRT_Parameters_MaxDirtyBuffers: 15000
-      VIRT_Parameters_MaxQueryMem: 64M
-      VIRT_Parameters_MaxClientConnections: 8
-      VIRT_Parameters_IndexTreeMaps: 64
+      VIRT_Parameters_NumberOfBuffers: 1360000
+      VIRT_Parameters_MaxDirtyBuffers: 1000000
+      VIRT_Parameters_MaxQueryMem: 2G
+      VIRT_Parameters_MaxClientConnections: 500
+      VIRT_Parameters_IndexTreeMaps: 256
       VIRT_Parameters_CheckpointInterval: 0
       VIRT_Parameters_DefaultIsolation: 1
       VIRT_Parameters_ThreadCleanupInterval: 1

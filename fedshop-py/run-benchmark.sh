@@ -143,5 +143,11 @@ METRICS_OUT="$BENCH_DIR/metrics.csv"
 run uv run fedshop metrics compute "$METRICS_OUT" \
   --config "$CONFIG" \
   --bench-dir "$BENCH_DIR"
+run uv run fedshop metrics correctness \
+  --from-csv "$METRICS_OUT" \
+  --output "$BENCH_DIR/metrics_correctness.csv"
+run uv run fedshop metrics source-selection \
+  --from-csv "$METRICS_OUT" \
+  --output "$BENCH_DIR/metrics_source_selection.csv"
 echo
 echo "Done. Metrics written to $METRICS_OUT"

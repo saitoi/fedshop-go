@@ -8,7 +8,7 @@ generation:
   stats:
     confidence_level: 0.95
   generator:
-    dir: "${config_dir}/../generators/watdiv"
+    dir: "${config_dir}/../../reference-repos/watdiv"
     exec: "${generation.generator.dir}/bin/Release/watdiv"
   virtuoso:
     compose_file: "${config_dir}/../docker/virtuoso.yml"
@@ -173,19 +173,19 @@ evaluation:
     pyfedx:
       dir: "${config_dir}/../../scripts"
     fedx:
-      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/FedShop/engines/FedX"
+      dir: "${config_dir}/../../reference-repos/FedShop/engines/FedX"
     rsa:
-      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/FedShop/engines/ARQ"
-      fedup_dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/query-engines/fedup"
+      dir: "${config_dir}/../../reference-repos/FedShop/engines/ARQ"
+      fedup_dir: "${config_dir}/../../reference-repos/query-engines/fedup"
       internal_endpoint_prefix: "http://localhost:8890/sparql/?default-graph-uri="
       compose_file: "${config_dir}/../docker/jena.yml"
       service_name: "jena-fuseki"
       endpoint: "http://localhost:3030/FedShop/query"
       container_name: "docker-jena-fuseki-1"
     semagrow:
-      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/query-engines/semagrow"
-      summary_generator_dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/query-engines/sevod-scraper"
+      dir: "${config_dir}/../../reference-repos/query-engines/semagrow"
+      summary_generator_dir: "${config_dir}/../../reference-repos/query-engines/sevod-scraper"
     splendid:
-      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/query-engines/splendid-server"
+      dir: "${config_dir}/../../reference-repos/query-engines/splendid-server"
     anapsid:
-      dir: "/Users/pedrosaito/fedshop-new-engine/reference-repos/query-engines/anapsid"
+      dir: "${config_dir}/../../reference-repos/query-engines/anapsid"

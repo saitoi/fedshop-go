@@ -1,0 +1,3 @@
+SELECT ?x {
+<http://www.ratingsite0.fr/Review32> <http://purl.org/stuff/rev#reviewer> ?x.
+}

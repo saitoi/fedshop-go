@@ -62,6 +62,30 @@ def _write_stats_failure(
     pd.DataFrame([row]).to_csv(stats_path, index=False)
 
 
+def stats_is_existing_result(stats_path: Path) -> bool:
+    """Return True when stats.csv already contains a valid benchmark outcome."""
+    if not stats_path.exists():
+        return False
+    try:
+        df = pd.read_csv(stats_path)
+    except Exception:
+        return False
+    if df.empty or "exec_time" not in df.columns:
+        return False
+    value = df.iloc[0]["exec_time"]
+    if pd.isna(value):
+        return False
+    value_str = str(value).strip()
+    if not value_str or value_str.lower() == "nan":
+        return False
+    if value_str == "timeout":
+        return True
+    try:
+        return not pd.isna(float(value_str))
+    except ValueError:
+        return False
+
+
 def run_evaluation(
     config: BenchmarkConfig,
     engine_name: str,
@@ -202,6 +226,7 @@ def run_all_evaluations(
     engine_filter: str | None = None,
     query_filter: str | None = None,
     proxy_client: ProxyClient | None = None,
+    skip_existing_ok: bool = False,
 ) -> None:
     """Run evaluations for all (engine, query, instance, batch, attempt) combinations."""
     gen = config.generation
@@ -224,13 +249,33 @@ def run_all_evaluations(
             for instance_id in range(gen.n_query_instances):
                 for batch_id in range(gen.n_batch):
                     for attempt in range(evl.n_attempts):
-                        run_evaluation(
-                            config=config,
-                            engine_name=engine_name,
-                            query_name=query_name,
-                            instance_id=instance_id,
-                            batch_id=batch_id,
-                            attempt=attempt,
-                            bench_dir=bench_dir,
-                            proxy_client=proxy_client,
+                        stats_path = (
+                            bench_dir / "evaluation" / engine_name / query_name /
+                            f"instance_{instance_id}" / f"batch_{batch_id}" /
+                            f"attempt_{attempt}" / "stats.csv"
                         )
+                        if skip_existing_ok and stats_is_existing_result(stats_path):
+                            continue
+                        try:
+                            run_evaluation(
+                                config=config,
+                                engine_name=engine_name,
+                                query_name=query_name,
+                                instance_id=instance_id,
+                                batch_id=batch_id,
+                                attempt=attempt,
+                                bench_dir=bench_dir,
+                                proxy_client=proxy_client,
+                            )
+                        except Exception as exc:
+                            import warnings
+                            warnings.warn(
+                                f"run_evaluation raised for {engine_name}/{query_name}/"
+                                f"instance_{instance_id}/batch_{batch_id}/attempt_{attempt}: "
+                                f"{type(exc).__name__}: {exc}"
+                            )
+                            if not stats_path.exists():
+                                _write_stats_failure(
+                                    stats_path, engine_name, query_name,
+                                    instance_id, batch_id, attempt, "error_runtime",
+                                )

@@ -1,0 +1,16 @@
+Como acho que deve ser:
+
+Base do pyfedx atual esta boa, mas pode ter melhorias:
+- modulos separados para cada responsabilidade da engine (cli, parser, planner, ..) parecido com ./go-engine
+- pode ter versao baseline bloqueante e outra paralela
+- visualizacao animada na web mostrando o nó representando a engine federada na qual a consulta chega e sendo distribuido pros outros nós e depois voltando quando a consulta esta pronta para ser enviada pros endpoints corretamente..
+- 
+
+O que nao incluir:
+- nao precisa ter rcp, ja esta bom com http enviando a consulta
+- nao precisa ter eleicao de lider, nem bully
+- nao precisa ter dht/chord
+
+Problemas remanescentes:
+
+Eu ainda nao entendo completamente o fedshop-py
