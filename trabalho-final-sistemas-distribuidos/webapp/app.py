@@ -8,6 +8,7 @@ executar → gravar → reproduzir).
 from __future__ import annotations
 
 import re
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import go_engine
+import config_support
 import infra
 import tracer
 
@@ -94,13 +96,11 @@ def get_query(query_id: str) -> JSONResponse:
 
 @app.get("/api/configs")
 def list_configs() -> JSONResponse:
-    """Batches disponíveis (arquivos virtuoso-proxy-mapping-batch*.json)."""
-    configs: list[dict] = []
-    if _DATA.exists():
-        for f in sorted(_DATA.glob("virtuoso-proxy-mapping-batch*.json")):
-            m = re.search(r"batch(\d+)", f.name)
-            batch_id = int(m.group(1)) if m else 0
-            configs.append({"id": f"batch{batch_id}", "label": f"Batch {batch_id}"})
+    """Batches disponíveis para visualização."""
+    configs = [
+        {"id": f"batch{batch_id}", "label": f"Batch {batch_id}"}
+        for batch_id in config_support.available_batch_ids(_DATA)
+    ]
     return JSONResponse(configs)
 
 
@@ -127,11 +127,16 @@ def execute(req: ExecuteRequest) -> JSONResponse:
     if not re.fullmatch(r"batch\d+", req.config_id):
         raise HTTPException(status_code=400, detail="config_id inválido")
     config_path = _DATA / f"virtuoso-proxy-mapping-{req.config_id}.json"
-    if not config_path.exists():
-        raise HTTPException(status_code=404, detail=f"Config '{req.config_id}' não encontrado")
 
     timeout = min(req.timeout, 300.0)
-    config_text = config_path.read_text()
+    batch_id = int(req.config_id.removeprefix("batch"))
+    if config_path.exists():
+        mapping = config_support.normalize_mapping(json.loads(config_path.read_text()))
+    elif batch_id in config_support.available_batch_ids(_DATA):
+        mapping = config_support.build_batch_mapping(batch_id)
+    else:
+        raise HTTPException(status_code=404, detail=f"Config '{req.config_id}' não encontrado")
+    config_text = json.dumps(mapping)
     if req.engine == "fedshop-go":
         result = go_engine.run_traced(req.query, config_text, timeout=timeout)
     elif req.engine == "pyfedx":

@@ -26,6 +26,126 @@ faz proxy de `/api` para `localhost:8022` — ajuste em `vite.config.ts`).
 Para usar o fedshop-go, o binário precisa existir em `../../go-engine/fedshop-go`
 (ou apontar `FEDSHOP_GO_BINARY`); o seletor "Motor" no topo passa a listá-lo.
 
+## Demonstração distribuída
+
+O webapp separa o cliente visual do trabalho real: o FastAPI recebe a consulta,
+executa o motor (`pyfedx` ou `fedshop-go`) e o motor faz requisições HTTP reais
+para os endpoints SPARQL. Para a apresentação, a topologia mais estável é deixar
+o navegador e o motor na mesma máquina e mover os endpoints Virtuoso para uma ou
+duas máquinas remotas.
+
+O webapp pressupõe que a preparação FedShop já foi feita. Ele lê as consultas de
+`../fedshop-py/benchmark/generation/` e consulta grafos que já precisam estar
+ingeridos no Virtuoso. Ele não gera dados, não instancia queries e não carrega
+N-Quads durante o startup.
+
+### Preparar dados e consultas
+
+Neste checkout já existem consultas instanciadas em `fedshop-py/benchmark/generation/`
+e arquivos `.nq` em `fedshop-py/inputs/product-dataset/`. Se precisar recriar
+esses artefatos, rode a preparação no diretório `fedshop-py`:
+
+```bash
+cd trabalho-final-sistemas-distribuidos/fedshop-py
+uv run fedshop generate products --config inputs/config/config_small.yaml
+uv run fedshop generate sources --config inputs/config/config_small.yaml
+```
+
+Na máquina que hospeda o Virtuoso, suba o serviço e carregue os batches que serão
+usados na demo:
+
+```bash
+cd trabalho-final-sistemas-distribuidos/fedshop-py
+docker compose -f docker/virtuoso.yml up -d
+
+uv run fedshop ingest batch 0 --config inputs/config/config_small.yaml
+uv run fedshop ingest batch 1 --config inputs/config/config_small.yaml
+```
+
+Depois gere ou atualize as consultas instanciadas contra os dados carregados:
+
+```bash
+uv run fedshop query run-all \
+  --config inputs/config/config_small.yaml \
+  --bench-dir benchmark \
+  --batch-id 0
+```
+
+Se essa preparação for feita numa máquina diferente da máquina A, copie para a
+máquina A pelo menos:
+
+```text
+fedshop-py/benchmark/generation/
+fedshop-py/data/virtuoso-proxy-mapping-batch*.json
+```
+
+Para a topologia de três máquinas, a forma mais simples e confiável é ingerir o
+mesmo dataset completo nas máquinas B e C. O webapp então usa B apenas para
+`vendor*` e C apenas para `ratingsite*`; não é necessário implementar ingestão
+parcial por tipo de fonte para a apresentação.
+
+### Duas máquinas
+
+- Máquina A: apresentação, `webapp` e motor de consulta.
+- Máquina B: Virtuoso com os grafos FedShop.
+
+Na máquina B, suba o Virtuoso e confirme que a porta `8890` está acessível pela
+rede local:
+
+```bash
+cd trabalho-final-sistemas-distribuidos/fedshop-py
+docker compose -f docker/virtuoso.yml up -d
+curl "http://IP_DA_MAQUINA_B:8890/sparql?query=ASK%20%7B%3Fs%20%3Fp%20%3Fo%7D"
+```
+
+Na máquina A, aponte o webapp para o Virtuoso remoto e desative o gerenciamento
+local de Docker:
+
+```bash
+cd trabalho-final-sistemas-distribuidos/webapp
+FEDSHOP_WEBAPP_MANAGE_INFRA=0 \
+FEDSHOP_VIRTUOSO_ENDPOINT=http://IP_DA_MAQUINA_B:8890/sparql \
+uv run uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+Abra `http://IP_DA_MAQUINA_A:8000/` no navegador da apresentação.
+
+### Três máquinas
+
+- Máquina A: apresentação, `webapp` e motor de consulta.
+- Máquina B: Virtuoso que servirá os grafos `vendor*`.
+- Máquina C: Virtuoso que servirá os grafos `ratingsite*`.
+
+Com os dois Virtuoso acessíveis pela rede, rode o webapp assim:
+
+```bash
+cd trabalho-final-sistemas-distribuidos/webapp
+FEDSHOP_WEBAPP_MANAGE_INFRA=0 \
+FEDSHOP_VENDOR_ENDPOINT=http://IP_DA_MAQUINA_B:8890/sparql \
+FEDSHOP_RATINGSITE_ENDPOINT=http://IP_DA_MAQUINA_C:8890/sparql \
+uv run uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+O mapping gerado pelo webapp mantém o `default-graph-uri` correto em cada
+requisição. Assim, `vendor0`, `vendor1`, ... usam a máquina B, enquanto
+`ratingsite0`, `ratingsite1`, ... usam a máquina C.
+
+### Variáveis de execução
+
+| Variável | Uso |
+| --- | --- |
+| `FEDSHOP_WEBAPP_MANAGE_INFRA=0` | Não tenta iniciar Docker/Virtuoso/proxy localmente no startup. |
+| `FEDSHOP_VIRTUOSO_ENDPOINT` | Endpoint SPARQL único para todos os grafos. |
+| `FEDSHOP_VENDOR_ENDPOINT` | Endpoint SPARQL para grafos `vendor*`; tem precedência sobre `FEDSHOP_VIRTUOSO_ENDPOINT`. |
+| `FEDSHOP_RATINGSITE_ENDPOINT` | Endpoint SPARQL para grafos `ratingsite*`; tem precedência sobre `FEDSHOP_VIRTUOSO_ENDPOINT`. |
+| `FEDSHOP_GO_BINARY` | Caminho do binário `fedshop-go`, se quiser mostrar o motor Go. |
+
+Para voltar ao modo local, pare o servidor e rode sem essas variáveis:
+
+```bash
+uv run uvicorn app:app --port 8000
+```
+
 ## Arquitetura: executar → gravar → reproduzir
 
 1. **Trace**: a consulta roda de verdade e cada operação vira um evento JSON com

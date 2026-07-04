@@ -9,6 +9,7 @@ estar disponível.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -29,6 +30,11 @@ _SERVICE_TIMEOUT = 60
 
 def _log(msg: str) -> None:
     print(f"[infra] {msg}", file=sys.stderr, flush=True)
+
+
+def _manage_infra_enabled() -> bool:
+    raw = os.environ.get("FEDSHOP_WEBAPP_MANAGE_INFRA", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
 
 
 def _docker_daemon_up() -> bool:
@@ -91,6 +97,10 @@ def _wait_for(url: str, label: str, timeout: int = _SERVICE_TIMEOUT) -> bool:
 
 def ensure_infra() -> None:
     """Sobe Docker Desktop + Virtuoso + proxy do FedShop se ainda não estiverem no ar."""
+    if not _manage_infra_enabled():
+        _log("gerenciamento local de infra desativado por FEDSHOP_WEBAPP_MANAGE_INFRA.")
+        return
+
     if _url_ok(_VIRTUOSO_URL) and _url_ok(_PROXY_URL):
         _log("Virtuoso e proxy já estão de pé.")
         return
