@@ -1,8 +1,8 @@
 SELECT ?property ?hasValue ?isValueOf {
-<http://www.vendor0.fr/Offer11> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/product> ?product.
+<http://www.vendor0.fr/Offer9> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/product> ?product.
 {
-    <http://www.vendor0.fr/Offer11> ?property ?hasValue.
+    <http://www.vendor0.fr/Offer9> ?property ?hasValue.
 } UNION {
-    ?isValueOf ?property <http://www.vendor0.fr/Offer11>.
+    ?isValueOf ?property <http://www.vendor0.fr/Offer9>.
 }
 }

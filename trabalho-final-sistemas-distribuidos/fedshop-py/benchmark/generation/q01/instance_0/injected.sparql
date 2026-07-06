@@ -1,8 +1,8 @@
 SELECT DISTINCT ?product ?label {
-FILTER(?value1 > "500"^^<http://www.w3.org/2001/XMLSchema#integer>)
-?localProductFeature1 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103>.
-?localProductFeature2 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103>.
-?localProductType <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductType0>.
+FILTER(?value1 > "1969-01-01"^^<http://www.w3.org/2001/XMLSchema#date>)
+?localProductFeature1 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature100>.
+?localProductFeature2 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature100>.
+?localProductType <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductType100>.
 ?product <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> ?localProductType.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature> ?localProductFeature1.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature> ?localProductFeature2.

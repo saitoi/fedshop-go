@@ -1,5 +1,5 @@
 SELECT ?title ?text ?reviewDate ?reviewer ?reviewerName ?rating1 ?rating2 ?rating3 ?rating4 {
-?review <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/reviewFor> <http://www.ratingsite0.fr/Product9560>.
+?review <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/reviewFor> <http://www.ratingsite0.fr/Product11377>.
 ?review <http://purl.org/stuff/rev#reviewer> ?reviewer.
 ?review <http://purl.org/dc/elements/1.1/title> ?title.
 ?review <http://purl.org/stuff/rev#text> ?text.

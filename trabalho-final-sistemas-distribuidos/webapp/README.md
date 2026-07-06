@@ -126,6 +126,30 @@ FEDSHOP_RATINGSITE_ENDPOINT=http://IP_DA_MAQUINA_C:8890/sparql \
 uv run uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
+Há um script por máquina em `trabalho-final-sistemas-distribuidos/scripts/` que
+automatiza os passos acima (subir Virtuoso, ingerir os batches, e no caso da
+máquina A checar os dois endpoints antes de subir o servidor):
+
+```bash
+# Máquina B (vendor*)
+bash trabalho-final-sistemas-distribuidos/scripts/machine-vendor.sh
+
+# Máquina C (ratingsite*)
+bash trabalho-final-sistemas-distribuidos/scripts/machine-ratingsite.sh
+
+# Máquina A (webapp)
+bash trabalho-final-sistemas-distribuidos/scripts/machine-webapp.sh \
+  --vendor-host IP_DA_MAQUINA_B \
+  --ratingsite-host IP_DA_MAQUINA_C
+```
+
+Os scripts de B e C pressupõem que `fedshop-py/data/dataset/*.nq` já foi
+sincronizado nessa máquina (copiado de onde os dados foram gerados) — eles
+carregam o mesmo dataset completo nas duas, exatamente como descrito acima. O
+script da máquina A pressupõe `benchmark/generation/` e
+`data/virtuoso-proxy-mapping-batch*.json` já copiados e o frontend já
+compilado; ele compila automaticamente se `webapp/frontend/dist` não existir.
+
 O mapping gerado pelo webapp mantém o `default-graph-uri` correto em cada
 requisição. Assim, `vendor0`, `vendor1`, ... usam a máquina B, enquanto
 `ratingsite0`, `ratingsite1`, ... usam a máquina C.

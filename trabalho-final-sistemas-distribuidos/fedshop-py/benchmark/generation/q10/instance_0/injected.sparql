@@ -1,10 +1,9 @@
 SELECT DISTINCT ?offer ?price {
-FILTER(?deliveryDays <= "3"^^<http://www.w3.org/2001/XMLSchema#integer> && ?date > "1982-03-17T00:00:00"^^<http://www.w3.org/2001/XMLSchema#dateTime>)
-?localProductXYZ <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/Product12642>.
-?vendor <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/country> <http://downlode.org/rdf/iso-3166/countries#US>.
-?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/product> ?localProductXYZ.
-?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/vendor> ?vendor.
-?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/deliveryDays> ?deliveryDays.
+FILTER("3"^^<http://www.w3.org/2001/XMLSchema#integer> <= "3"^^<http://www.w3.org/2001/XMLSchema#integer> && ?date > "1971-09-30"^^<http://www.w3.org/2001/XMLSchema#date>)
+<http://www.vendor2.fr/Vendor0> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/country> <http://downlode.org/rdf/iso-3166/countries#US>.
+?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/deliveryDays> "3"^^<http://www.w3.org/2001/XMLSchema#integer>.
+?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/product> <http://www.vendor2.fr/Product12614>.
+?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/vendor> <http://www.vendor2.fr/Vendor0>.
 ?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/price> ?price.
 ?offer <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/validTo> ?date.
 }

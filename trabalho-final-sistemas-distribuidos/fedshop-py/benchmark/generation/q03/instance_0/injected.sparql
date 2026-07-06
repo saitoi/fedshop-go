@@ -1,7 +1,7 @@
 SELECT ?product ?label {
-FILTER(?p1 > "500"^^<http://www.w3.org/2001/XMLSchema#integer> && ?p3 < "1500"^^<http://www.w3.org/2001/XMLSchema#integer> && !bound(?testVar))
-?localProductFeature1 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature102>.
-?localProductType <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductType105>.
+FILTER(?p1 > "1969-01-01"^^<http://www.w3.org/2001/XMLSchema#date> && ?p3 < "1971-01-01"^^<http://www.w3.org/2001/XMLSchema#date> && !bound(?testVar))
+?localProductFeature1 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature100>.
+?localProductType <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductType0>.
 ?localProduct <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> ?localProductType.
 ?localProduct <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature> ?localProductFeature1.
 ?localProduct <http://www.w3.org/2000/01/rdf-schema#label> ?label.
@@ -9,7 +9,7 @@ FILTER(?p1 > "500"^^<http://www.w3.org/2001/XMLSchema#integer> && ?p3 < "1500"^^
 ?localProduct <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyNumeric1> ?p1.
 ?localProduct <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyNumeric3> ?p3.
 OPTIONAL{
-?localProductFeature2 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature111>.
+?localProductFeature2 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature24>.
 ?localProduct <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature> ?localProductFeature2.
 ?localProduct <http://www.w3.org/2000/01/rdf-schema#label> ?testVar.
 }

@@ -1,8 +1,8 @@
 SELECT DISTINCT ?product ?localProductLabel {
-FILTER(<http://www.vendor0.fr/Product8987> != ?product && ?simProperty1 < ?origProperty1 + "20"^^<http://www.w3.org/2001/XMLSchema#integer>  && ?simProperty1 > ?origProperty1 - "20"^^<http://www.w3.org/2001/XMLSchema#integer>  && ?simProperty2 < ?origProperty2 + "70"^^<http://www.w3.org/2001/XMLSchema#integer>  && ?simProperty2 > ?origProperty2 - "70"^^<http://www.w3.org/2001/XMLSchema#integer> )
-<http://www.vendor0.fr/Product8987> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature> ?prodFeature.
-<http://www.vendor0.fr/Product8987> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyNumeric1> ?origProperty1.
-<http://www.vendor0.fr/Product8987> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyNumeric2> ?origProperty2.
+FILTER(<http://www.vendor0.fr/Product9690> != ?product && ?simProperty1 < ?origProperty1 + "20"^^<http://www.w3.org/2001/XMLSchema#integer>  && ?simProperty1 > ?origProperty1 - "20"^^<http://www.w3.org/2001/XMLSchema#integer>  && ?simProperty2 < ?origProperty2 + "70"^^<http://www.w3.org/2001/XMLSchema#integer>  && ?simProperty2 > ?origProperty2 - "70"^^<http://www.w3.org/2001/XMLSchema#integer> )
+<http://www.vendor0.fr/Product9690> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature> ?prodFeature.
+<http://www.vendor0.fr/Product9690> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyNumeric1> ?origProperty1.
+<http://www.vendor0.fr/Product9690> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyNumeric2> ?origProperty2.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature> ?prodFeature.
 ?product <http://www.w3.org/2000/01/rdf-schema#label> ?localProductLabel.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyNumeric1> ?simProperty1.

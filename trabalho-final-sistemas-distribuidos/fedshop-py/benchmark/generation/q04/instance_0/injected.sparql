@@ -1,21 +1,21 @@
 SELECT DISTINCT ?product ?label ?propertyTextual {
 {
-    FILTER(<http://www.vendor0.fr/ProductType0> != <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/Product> && <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103> != <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature104> && ?p1 > "400"^^<http://www.w3.org/2001/XMLSchema#integer>)
+    FILTER(<http://www.vendor0.fr/ProductType0> != <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/Product> && <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature100> != <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103> && ?p1 > "1969-01-01"^^<http://www.w3.org/2001/XMLSchema#date>)
 ?product <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.vendor0.fr/ProductType0>.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature> ?localProductFeature1.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature> ?localProductFeature2.
-?localProductFeature1 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature104>.
-?localProductFeature2 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103>.
+?localProductFeature1 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103>.
+?localProductFeature2 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature100>.
 ?product <http://www.w3.org/2000/01/rdf-schema#label> ?label.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyNumeric1> ?p1.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyTextual1> ?propertyTextual.
 } UNION {
-    FILTER(<http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103> != <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103> && <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103> != <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature104> && ?p2 > "400"^^<http://www.w3.org/2001/XMLSchema#integer>)
+    FILTER(<http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature101> != <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature100> && <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature101> != <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103> && ?p2 > "1969-01-01"^^<http://www.w3.org/2001/XMLSchema#date>)
 ?product <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.vendor0.fr/ProductType0>.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature> ?localProductFeature1.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productFeature> ?localProductFeature3.
-?localProductFeature1 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature104>.
-?localProductFeature3 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103>.
+?localProductFeature1 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature103>.
+?localProductFeature3 <http://www.w3.org/2002/07/owl#sameAs> <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/ProductFeature101>.
 ?product <http://www.w3.org/2000/01/rdf-schema#label> ?label.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyNumeric2> ?p2.
 ?product <http://www4.wiwiss.fu-berlin.de/bizer/bsbm/v01/vocabulary/productPropertyTextual1> ?propertyTextual.
