@@ -63,7 +63,7 @@ def list_queries() -> JSONResponse:
             if q_dir.is_dir() and inst.exists():
                 queries.append({
                     "id": f"{q_dir.name}-instance0",
-                    "label": f"{q_dir.name} (instanciada)",
+                    "label": q_dir.name,
                     "query": q_dir.name,
                 })
 
@@ -74,7 +74,7 @@ def list_queries() -> JSONResponse:
             if not any(q["query"] == name for q in queries):
                 queries.append({
                     "id": name,
-                    "label": f"{name} (template)",
+                    "label": name,
                     "query": name,
                 })
 

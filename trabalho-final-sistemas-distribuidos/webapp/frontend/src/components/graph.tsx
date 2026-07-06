@@ -15,6 +15,13 @@ import { useSyncExternalStore } from "react"
 import { COLOR, shortId } from "@/lib/compile"
 import { player } from "@/lib/player"
 
+/** Rótulo dentro do círculo: só o número — a cor/posição já diz se é vendor ou
+ * ratingsite, e o texto completo ("v0", "r1"...) não cabe em círculos pequenos. */
+function nodeNumber(id: string): string {
+  const m = id.match(/(\d+)$/)
+  return m ? m[1] : shortId(id)
+}
+
 const SVGNS = "http://www.w3.org/2000/svg"
 
 const ENGINE_R = 40
@@ -54,21 +61,90 @@ function pathOf(e: Edge): string {
   return `M ${e.p0.x} ${e.p0.y} C ${e.c1.x} ${e.c1.y}, ${e.c2.x} ${e.c2.y}, ${e.p3.x} ${e.p3.y}`
 }
 
-function layout(endpointIds: string[], W: number, H: number): Record<string, NodePos> {
+const MIN_R = 6
+const GAP = 6
+
+/** Fração horizontal das colunas de endpoints em relação à borda mais próxima.
+ * Em telas estreitas (mobile) os círculos ficam menores e a distância até o
+ * motor parecia grande demais — aqui as colunas se aproximam do centro conforme
+ * W encolhe; a partir de ~700px (desktop) o valor volta a ser o de sempre (13%). */
+function sideFraction(W: number): number {
+  const wide = 700
+  const narrow = 320
+  const t = Math.max(0, Math.min(1, (wide - W) / (wide - narrow)))
+  return 0.13 + t * 0.09
+}
+
+/** Empacota um lado (vendor ou ratingsite) numa coluna única quando cabe, ou em
+ * várias sub-colunas — sempre crescendo para fora, nunca em direção ao motor —
+ * quando o número de nós não caberia em uma coluna sem sobrepor (tipicamente em
+ * telas móveis, onde a área do grafo é mais baixa). A coluna mais próxima do
+ * motor (col 0) reproduz exatamente o posicionamento de coluna única de antes. */
+function packSide(
+  ids: string[],
+  xEdge: number,
+  outward: -1 | 1,
+  bandLimit: number,
+  top: number,
+  bottom: number,
+  maxR: number
+): { positions: Record<string, Pt>; cols: number; radius: number } {
+  const n = ids.length
+  if (n === 0) return { positions: {}, cols: 1, radius: maxR }
+  const availH = bottom - top
+  const maxCols = Math.max(1, Math.min(n, 5))
+
+  let cols = 1
+  let rows = n
+  let radius = maxR
+  for (cols = 1; cols <= maxCols; cols++) {
+    rows = Math.ceil(n / cols)
+    const heightR = rows <= 1 ? maxR : (availH / (rows - 1) - GAP) / 2
+    radius = Math.min(maxR, heightR)
+    if (radius >= MIN_R || cols === maxCols) break
+  }
+  // Não deixa as colunas extras encostarem no motor: encolhe o raio se preciso.
+  if (cols > 1) {
+    const spacingNeeded = (cols - 1) * (radius * 2 + GAP)
+    if (spacingNeeded > bandLimit) {
+      radius = Math.max(4, Math.min(radius, bandLimit / (cols - 1) / 2 - GAP / 2))
+    }
+  }
+  radius = Math.max(4, radius)
+  const colSpacing = radius * 2 + GAP
+
+  const positions: Record<string, Pt> = {}
+  ids.forEach((id, i) => {
+    const col = Math.floor(i / rows)
+    const row = i % rows
+    const rowsInThisCol = Math.min(rows, n - col * rows)
+    const y = rowsInThisCol <= 1 ? (top + bottom) / 2 : top + (availH * row) / (rowsInThisCol - 1)
+    positions[id] = { x: xEdge + outward * col * colSpacing, y }
+  })
+  return { positions, cols, radius }
+}
+
+function layout(
+  endpointIds: string[],
+  W: number,
+  H: number,
+  maxR: number
+): { nodes: Record<string, NodePos>; radius: number; packed: boolean } {
   const nodes: Record<string, NodePos> = {}
   const vendors = endpointIds.filter((id) => id.startsWith("vendor"))
   const ratings = endpointIds.filter((id) => id.startsWith("ratingsite"))
   const others = endpointIds.filter((id) => !id.startsWith("vendor") && !id.startsWith("ratingsite"))
 
   const bottom = H - 30
-  const column = (ids: string[], x: number, kind: NodePos["kind"]) => {
-    ids.forEach((id, i) => {
-      const y = ids.length === 1 ? (COL_TOP + bottom) / 2 : COL_TOP + ((bottom - COL_TOP) * i) / (ids.length - 1)
-      nodes[id] = { x, y, kind }
-    })
-  }
-  column(vendors, W * 0.13, "vendor")
-  column(ratings, W * 0.87, "ratingsite")
+  const frac = sideFraction(W)
+  const vendorX = W * frac
+  const ratingX = W * (1 - frac)
+  const vendorPack = packSide(vendors, vendorX, -1, vendorX - 4, COL_TOP, bottom, maxR)
+  const ratingPack = packSide(ratings, ratingX, 1, W - ratingX - 4, COL_TOP, bottom, maxR)
+
+  for (const [id, p] of Object.entries(vendorPack.positions)) nodes[id] = { ...p, kind: "vendor" }
+  for (const [id, p] of Object.entries(ratingPack.positions)) nodes[id] = { ...p, kind: "ratingsite" }
+
   // Endpoints fora do padrão vendor/ratingsite: linha discreta na base.
   others.forEach((id, i) => {
     nodes[id] = { x: W * (0.35 + (0.3 * (i + 0.5)) / Math.max(1, others.length)), y: bottom, kind: "other" }
@@ -76,7 +152,11 @@ function layout(endpointIds: string[], W: number, H: number): Record<string, Nod
 
   nodes.__ENGINE__ = { x: W / 2, y: H * 0.56, kind: "engine" }
   nodes.__CLIENT__ = { x: W / 2, y: Math.max(46, H * 0.12), kind: "client" }
-  return nodes
+  return {
+    nodes,
+    radius: Math.min(vendorPack.radius, ratingPack.radius),
+    packed: vendorPack.cols > 1 || ratingPack.cols > 1,
+  }
 }
 
 /** Curvas nó→motor. Vendedores chegam pelo arco esquerdo do motor, ratings
@@ -135,13 +215,13 @@ export function Graph({ engineLabel }: { engineLabel: string }) {
   const endpoints = player.ui.endpoints
   const nVend = endpoints.filter((e) => e.id.startsWith("vendor")).length
   const nRate = endpoints.filter((e) => e.id.startsWith("ratingsite")).length
-  const epR = Math.max(11, Math.min(22, ((size.h - COL_TOP - 30) / Math.max(2, Math.max(nVend, nRate))) * 0.38))
-  const sideLabels = Math.max(nVend, nRate) <= MAX_SIDE_LABELS
+  const frac = sideFraction(size.w)
 
-  const nodes = React.useMemo(
-    () => layout(endpoints.map((e) => e.id), size.w, size.h),
+  const { nodes, radius: epR, packed } = React.useMemo(
+    () => layout(endpoints.map((e) => e.id), size.w, size.h, 22),
     [endpoints, size]
   )
+  const sideLabels = !packed && Math.max(nVend, nRate) <= MAX_SIDE_LABELS
   const edges = React.useMemo(() => buildEdges(nodes, epR, size.h), [nodes, epR, size.h])
   const edgesRef = React.useRef(edges)
   React.useEffect(() => {
@@ -290,13 +370,13 @@ export function Graph({ engineLabel }: { engineLabel: string }) {
         ) : (
           <>
             {/* rótulos das colunas + legenda */}
-            <text x={size.w * 0.13} y={30} textAnchor="middle" fontSize="11" fontWeight={600} fill={COLOR.vendor}>
+            <text x={size.w * frac} y={30} textAnchor="middle" fontSize="11" fontWeight={600} fill={COLOR.vendor}>
               Vendedores{nVend ? ` (${nVend})` : ""}
             </text>
-            <text x={size.w * 0.87} y={30} textAnchor="middle" fontSize="11" fontWeight={600} fill={COLOR.ratingsite}>
+            <text x={size.w * (1 - frac)} y={30} textAnchor="middle" fontSize="11" fontWeight={600} fill={COLOR.ratingsite}>
               Sites de avaliação{nRate ? ` (${nRate})` : ""}
             </text>
-            <g transform={`translate(${size.w * 0.13 + 60}, ${size.h - 14})`}>
+            <g transform={`translate(${size.w * frac + 60}, ${size.h - 14})`}>
               {LEGEND.map((l, k) => (
                 <g key={l.label} transform={`translate(${k * 78}, 0)`}>
                   <circle r={4.5} fill={l.color} />
@@ -335,8 +415,14 @@ export function Graph({ engineLabel }: { engineLabel: string }) {
                     <circle r={isPulsed ? epR * 1.25 : epR} className="fill-background" />
                     <circle r={isPulsed ? epR * 1.25 : epR} fill={color}
                       fillOpacity={isPulsed ? 0.45 : 0.16} stroke={color} strokeWidth={1.5} />
-                    <text y={3} textAnchor="middle" fontSize="10" fontWeight={600} className="fill-foreground">
-                      {shortId(ep.id)}
+                    <text
+                      y={3}
+                      textAnchor="middle"
+                      fontSize={Math.max(7, Math.min(10, epR * 0.55))}
+                      fontWeight={600}
+                      className="fill-foreground"
+                    >
+                      {nodeNumber(ep.id)}
                     </text>
                     {sideLabels && p.kind !== "other" && (
                       <text

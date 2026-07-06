@@ -34,7 +34,7 @@ export function PlayerBar() {
   }, [])
 
   return (
-    <div className="flex items-center gap-3 border-t px-4 py-2">
+    <div className="flex flex-wrap items-center gap-3 border-t px-4 py-2 lg:flex-nowrap">
       <div className="flex items-center gap-1">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -102,7 +102,7 @@ export function PlayerBar() {
         {(player.playhead / 1000).toFixed(1)}s
       </span>
 
-      <div className="flex w-40 items-center gap-2">
+      <div className="order-last flex w-full basis-full items-center gap-2 lg:order-none lg:w-40 lg:basis-auto">
         <Slider
           value={[speedExp]}
           min={-2}

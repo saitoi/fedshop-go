@@ -7,6 +7,23 @@ fiel e controlável.
 
 ## Como rodar
 
+### Clone limpo, um comando
+
+Requisitos: `uv`, `node`/`npm`, `docker` no PATH. Não pressupõe nenhuma
+preparação prévia — gera o dataset, sobe o Virtuoso, ingere os batches 0 e 1,
+gera as consultas instanciadas, compila o frontend e sobe o servidor:
+
+```bash
+bash trabalho-final-sistemas-distribuidos/scripts/bootstrap-webapp.sh
+# abrir http://localhost:8000/
+```
+
+Cada etapa é pulada se o artefato correspondente já existir, então rodar de
+novo depois de uma preparação parcial (ou para só religar o servidor) é
+seguro e rápido.
+
+### Passo a passo manual
+
 Pré-requisito: Virtuoso de pé em `localhost:8890` com os grafos do batch
 (`http://www.vendor0.fr/` … `http://www.ratingsite9.fr/`).
 

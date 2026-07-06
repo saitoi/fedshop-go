@@ -27,6 +27,7 @@ import { executeQuery, fetchConfigs, fetchEngines, fetchQueries, fetchQueryText 
 import { compile } from "@/lib/compile"
 import { player } from "@/lib/player"
 import type { ConfigOption, EngineOption, QueryOption } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 function HeaderSelect<T extends { id: string; label: string }>({
   label,
@@ -42,10 +43,10 @@ function HeaderSelect<T extends { id: string; label: string }>({
   width: string
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+    <div className="flex shrink-0 items-center gap-2">
+      <Label className="hidden text-xs text-muted-foreground sm:inline">{label}</Label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger size="sm" className={width}>
+        <SelectTrigger size="sm" className={cn("min-w-0 shrink-0", width)}>
           <SelectValue placeholder="—" />
         </SelectTrigger>
         <SelectContent>
@@ -106,21 +107,39 @@ export function App() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-svh flex-col">
+      <div className="flex min-h-svh flex-col lg:h-svh">
         <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5">
           <h1 className="text-sm font-semibold">
             Visualizador do motor federado
             <span className="ml-2 text-xs font-normal text-muted-foreground">FedShop · SPARQL</span>
           </h1>
-          <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-            <HeaderSelect label="Consulta" items={queries} value={queryId} onChange={setQueryId} width="w-44" />
-            <HeaderSelect label="Federação" items={configs} value={configId} onChange={setConfigId} width="w-28" />
-            <HeaderSelect label="Motor" items={engines} value={engineId} onChange={setEngineId} width="w-52" />
-            <Button size="sm" onClick={run} disabled={running || !queryId || !configId}>
+          <div className="flex w-full flex-nowrap items-center justify-end gap-2 overflow-x-auto sm:w-auto sm:flex-1 sm:gap-3">
+            <HeaderSelect
+              label="Consulta"
+              items={queries}
+              value={queryId}
+              onChange={setQueryId}
+              width="w-20 sm:w-36 lg:w-44"
+            />
+            <HeaderSelect
+              label="Federação"
+              items={configs}
+              value={configId}
+              onChange={setConfigId}
+              width="w-16 sm:w-24 lg:w-28"
+            />
+            <HeaderSelect
+              label="Motor"
+              items={engines}
+              value={engineId}
+              onChange={setEngineId}
+              width="w-24 sm:w-40 lg:w-52"
+            />
+            <Button size="sm" onClick={run} disabled={running || !queryId || !configId} className="shrink-0">
               {running ? <Spinner /> : <Play />}
-              {running ? "Executando…" : "Executar"}
+              <span className="hidden sm:inline">{running ? "Executando…" : "Executar"}</span>
             </Button>
-            {running && <Badge variant="secondary">executando de verdade…</Badge>}
+            {running && <Badge variant="secondary" className="hidden sm:inline-flex">executando de verdade…</Badge>}
           </div>
         </header>
 
@@ -139,23 +158,23 @@ export function App() {
           </Alert>
         )}
 
-        <main className="grid min-h-0 flex-1 grid-cols-1 gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,30rem)]">
-          <section className="flex min-h-0 flex-col border-r">
+        <main className="flex flex-1 flex-col lg:grid lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,30rem)] lg:grid-rows-none lg:gap-0">
+          <section className="flex h-[55vh] shrink-0 flex-col border-b lg:h-auto lg:min-h-0 lg:flex-1 lg:border-r lg:border-b-0">
             <div className="min-h-0 flex-1">
               <Graph engineLabel={engineLabel} />
             </div>
             <PlayerBar />
           </section>
 
-          <aside className="min-h-0">
-            <Tabs defaultValue="overview" className="flex h-full flex-col gap-0">
-              <TabsList className="mx-3 mt-2 self-start">
+          <aside className="lg:min-h-0">
+            <Tabs defaultValue="overview" className="flex flex-col gap-0 lg:h-full">
+              <TabsList className="mx-3 mt-2 w-[calc(100%-1.5rem)] self-start sm:w-auto">
                 <TabsTrigger value="overview">Visão geral</TabsTrigger>
                 <TabsTrigger value="joins">Joins</TabsTrigger>
                 <TabsTrigger value="log">Log</TabsTrigger>
                 <TabsTrigger value="results">Resultados</TabsTrigger>
               </TabsList>
-              <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                 <div className="p-3">
                   <TabsContent value="overview">
                     <OverviewTab />

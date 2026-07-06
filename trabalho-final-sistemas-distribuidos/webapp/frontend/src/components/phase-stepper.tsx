@@ -66,7 +66,7 @@ export function PhaseStepper() {
               ? liveMetric(step.id)
               : "—"
         return (
-          <div key={step.id} className="flex min-w-0 flex-1 items-center gap-1">
+          <div key={step.id} className="flex w-48 shrink-0 items-center gap-1 lg:w-auto lg:min-w-0 lg:flex-1">
             <Item
               asChild
               size="xs"
