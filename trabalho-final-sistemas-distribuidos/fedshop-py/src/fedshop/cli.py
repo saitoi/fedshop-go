@@ -468,3 +468,134 @@ def metrics_plot_pr(config, bench_dir, from_csv, output, engine_filter, query_fi
         raise SystemExit(1)
     if output:
         click.echo(f"Plot saved to {output}")
+
+
+# ─── Distributed topologies (T1/T2/T3) ──────────────────────────────────────
+
+DEFAULT_DIST_CONFIG = str(_FEDSHOP_PY_DIR / "inputs/config/config_dist.yaml")
+DEFAULT_DIST_ROOT = str(_FEDSHOP_PY_DIR / "benchmark-dist")
+
+
+@cli.group()
+def topology():
+    """Distributed-topology benchmark: mapping rewrite, manifest, merge, tests."""
+
+
+@topology.command("bootstrap")
+@click.argument("topology_name")
+@click.option("--bench-root", default=DEFAULT_DIST_ROOT, show_default=True)
+@click.option("--generation-dir", default=None,
+              help="Shared generation dir to symlink (default: <bench-root>/generation).")
+def topology_bootstrap(topology_name, bench_root, generation_dir):
+    """Create <bench-root>/TOPOLOGY_NAME with a symlinked generation/."""
+    from .topology import bootstrap_bench_dir
+    generation = Path(generation_dir) if generation_dir else Path(bench_root) / "generation"
+    topo_dir = bootstrap_bench_dir(Path(bench_root) / topology_name, generation)
+    click.echo(f"Bench dir ready: {topo_dir}")
+
+
+@topology.command("rewrite-mapping")
+@click.option("--config", default=DEFAULT_DIST_CONFIG, show_default=True)
+@click.option("--vendor-host", required=True, help="Host/IP serving vendor* graphs.")
+@click.option("--ratingsite-host", required=True, help="Host/IP serving ratingsite* graphs.")
+@click.option("--port", type=int, default=8890, show_default=True)
+def topology_rewrite_mapping(config, vendor_host, ratingsite_host, port):
+    """Point the workdir proxy-mapping JSONs at remote Virtuoso hosts."""
+    from .topology import rewrite_mapping
+    cfg = _load(config)
+    files = rewrite_mapping(Path(cfg.generation.workdir), vendor_host, ratingsite_host, port)
+    click.echo(f"Rewrote {len(files)} mapping file(s) in {cfg.generation.workdir}")
+
+
+@topology.command("manifest")
+@click.argument("topology_name")
+@click.option("--bench-dir", required=True, help="Per-topology bench dir receiving run_manifest.json.")
+@click.option("--vendor-host", default="localhost", show_default=True)
+@click.option("--ratingsite-host", default="localhost", show_default=True)
+@click.option("--iperf", is_flag=True, default=False, help="Also measure bandwidth (needs iperf3 -s on the host).")
+@click.option("--ping-count", type=int, default=20, show_default=True)
+def topology_manifest(topology_name, bench_dir, vendor_host, ratingsite_host, iperf, ping_count):
+    """Record topology, machine identity, and RTT/bandwidth covariates."""
+    import json as _json
+    from .topology import collect_manifest
+    manifest = collect_manifest(
+        Path(bench_dir), topology_name, vendor_host, ratingsite_host,
+        run_iperf=iperf, ping_count=ping_count,
+    )
+    click.echo(_json.dumps(manifest, indent=2))
+
+
+@topology.command("merge")
+@click.argument("outfile")
+@click.option("--bench-root", default=DEFAULT_DIST_ROOT, show_default=True,
+              help="Auto-discover topo*/metrics.csv under this root.")
+@click.option("--topo", "topo_specs", multiple=True,
+              help="Explicit name=dir pairs (e.g. --topo topo1=benchmark-dist/topo1).")
+@click.option("--baseline", default="topo1", show_default=True)
+def topology_merge(outfile, bench_root, topo_specs, baseline):
+    """Merge per-topology metrics.csv into one CSV with derived metrics."""
+    from .topology import merge_topologies
+    if topo_specs:
+        topo_dirs = {}
+        for spec in topo_specs:
+            name, _, path = spec.partition("=")
+            if not path:
+                raise click.ClickException(f"--topo expects name=dir, got: {spec}")
+            topo_dirs[name] = Path(path)
+    else:
+        root = Path(bench_root)
+        topo_dirs = {
+            p.name: p for p in sorted(root.glob("topo*"))
+            if (p / "metrics.csv").exists()
+        }
+        if not topo_dirs:
+            raise click.ClickException(f"No topo*/metrics.csv found under {root}")
+    df = merge_topologies(topo_dirs, outfile, baseline=baseline)
+    click.echo(f"Merged {sorted(topo_dirs)} → {outfile} ({len(df)} rows)")
+
+
+@topology.command("hypothesis")
+@click.argument("outfile")
+@click.option("--from-csv", required=True, help="Merged metrics CSV from `topology merge`.")
+@click.option("--alpha", default=0.05, show_default=True, type=float)
+def topology_hypothesis(outfile, from_csv, alpha):
+    """Run HT1–HT5 topology hypothesis tests over the merged metrics."""
+    import pandas as pd
+    from .topology_hypothesis import run_topology_hypothesis_tests
+    df = pd.read_csv(from_csv)
+    result = run_topology_hypothesis_tests(df, alpha=alpha)
+    Path(outfile).parent.mkdir(parents=True, exist_ok=True)
+    result.to_csv(outfile, index=False)
+    _print_table(result, None)
+    click.echo(f"\nHypothesis results written to {outfile}")
+
+
+@topology.command("typst-tables")
+@click.argument("outfile")
+@click.option("--from-csv", required=True, help="Merged metrics CSV from `topology merge`.")
+@click.option("--hypothesis-csv", default=None, help="Topology hypothesis CSV to include.")
+@click.option("--decimals", type=int, default=2, show_default=True)
+@click.option("--alpha", default=0.05, show_default=True, type=float)
+def topology_typst_tables(outfile, from_csv, hypothesis_csv, decimals, alpha):
+    """Render the topology timing/batch/summary/hypothesis Typst tables."""
+    import pandas as pd
+    from .topology_tables import render_topology_tables
+    df = pd.read_csv(from_csv)
+    hyp_df = pd.read_csv(hypothesis_csv) if hypothesis_csv else None
+    output_path = Path(outfile)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(render_topology_tables(df, hyp_df, decimals, alpha))
+    click.echo(f"Typst tables written to {output_path}")
+
+
+@topology.command("plot")
+@click.argument("output_dir")
+@click.option("--from-csv", required=True, help="Merged metrics CSV from `topology merge`.")
+def topology_plot(output_dir, from_csv):
+    """Write exec_time×batch, slowdown, and network-ratio figures."""
+    import pandas as pd
+    from .topology_tables import plot_topology
+    df = pd.read_csv(from_csv)
+    written = plot_topology(df, output_dir)
+    for path in written:
+        click.echo(f"Wrote {path}")

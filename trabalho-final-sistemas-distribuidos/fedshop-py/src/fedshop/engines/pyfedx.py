@@ -187,6 +187,19 @@ class PyFedXAdapter(EngineAdapter):
             "http_req": failed_reason if failed_reason else _v("http_requests", proxy_stats.get("NB_HTTP_REQ", 0)),
             "data_transfer": failed_reason if failed_reason else _v("data_transfer", proxy_stats.get("DATA_TRANSFER", 0)),
         }
+        # Distributed-systems metrics: trailing columns so existing readers,
+        # which index by name over the original 12 columns, stay compatible.
+        for column, json_key in (
+            ("request_bytes", "request_bytes"),
+            ("net_req_count", "net_req_count"),
+            ("net_total_time", "net_total_seconds"),
+            ("net_mean_time", "net_mean_seconds"),
+            ("net_p50_time", "net_p50_seconds"),
+            ("net_p95_time", "net_p95_seconds"),
+            ("endpoints_contacted", "endpoints_contacted"),
+            ("endpoint_load_imbalance", "endpoint_load_imbalance"),
+        ):
+            row[column] = failed_reason if failed_reason else _v(json_key, 0)
         stats_path.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame([row]).to_csv(stats_path, index=False)
 

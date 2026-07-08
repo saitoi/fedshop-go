@@ -1,0 +1,87 @@
+use como referencia o ./fedshop-py e, para os testes de hipotese, pode olhar o ./artigo
+temos tres topologias:
+- tudo me uma maquina
+- todos endpoints em uma maquina separada da engine/cliente
+- endpoints do vendedor em uma maquina, endpoints de sites de avaliacao em outra maquina, engine/cliente em outra maquina
+estou trabalhando no ./trabalho-final-sistemas-distribuidos, queria montar benchmarks que especificas para sistemas distribuidos.
+pensei nas seguintes:
+
+- tempo de execucao para cada topologia e variando o tamanho do batch para cada consulta. tal como:
+```
+#figure(placement: auto, caption: [
+  Tempos médios (em segundos) por estágio. Células em dourado indicam o melhor
+  tempo global da coluna.
+])[
+#text(size: 8.3pt)[
+#table(
+  columns: 6,
+  column-gutter: 4pt,
+  row-gutter: 1pt,
+  align: (left, left, center, center, center, center),
+  inset: (x, y) => (
+    x: 9pt,
+    y: 4pt
+  ),
+  table.hline(stroke: .6pt),
+  [*Tipo*],
+  [*Motor*],
+  [`exec_time`],
+  [`planning_time`],
+  [`source_selection_time`],
+  [`join_time`],
+
+  table.hline(stroke: .6pt),
+  table.cell(rowspan: 1, [Oráculo], align: horizon),
+  [RSA],
+    [*9,40*],
+    [*1,23*],
+    [*1,23*],
+    [*8,17*],
+
+  table.hline(stroke: .6pt),
+  table.cell(rowspan: 3, [Implementação], align: horizon),
+  [FedShop-Go],
+    [#box(fill: rgb("#DAA520"), inset: 1pt)[*0,44*]],
+    [0,00],
+    [#box(fill: rgb("#DAA520"), inset: 1pt)[*0,06*]],
+    [#box(fill: rgb("#DAA520"), inset: 1pt)[*0,38*]],
+  [PyFedX],
+    [9,21],
+    [#box(fill: rgb("#DAA520"), inset: 1pt)[*0,00*]],
+    [0,40],
+    [8,81],
+  [PyFedX++],
+    [2,03],
+    [#box(fill: rgb("#DAA520"), inset: 1pt)[*0,00*]],
+    [0,71],
+    [1,32],
+
+  table.hline(stroke: .6pt),
+  table.cell(rowspan: 1, [_Baseline_], align: horizon),
+  [FedX],
+    [*3,87*],
+    [*0,00*],
+    [*0,14*],
+    [*3,74*],
+
+  table.hline(stroke: .6pt),
+  table.cell(rowspan: 2, [Metadados], align: horizon),
+  [SPLENDID],
+    [*13,67*],
+    [--],
+    [--],
+    [--],
+  [SemaGrow],
+    [67,10],
+    [--],
+    [--],
+    [--],
+
+  table.hline(stroke: .6pt),
+)
+]
+] <res:tempo-engines>
+```
+
+- sugere mais quais metricas?
+- sugere algum teste de hipotese?

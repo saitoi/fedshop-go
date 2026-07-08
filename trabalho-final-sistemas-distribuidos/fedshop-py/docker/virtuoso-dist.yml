@@ -1,0 +1,31 @@
+# Virtuoso instance dedicated to the distributed-topology benchmark
+# (config_dist.yaml). Fully isolated from docker/virtuoso.yml — different
+# service/container name, different host ports, different volume — so
+# ingesting data-dist batches never touches the Virtuoso instance/graphs used
+# by config_small.yaml or the webapp (which share the vendor0-19/ratingsite0-19
+# graph URIs with config_dist's batches 0-1).
+services:
+  dist-virtuoso:
+    image: openlink/virtuoso-opensource-7:7.2.13-alpine
+    environment:
+      SPARQL_UPDATE: "false"
+      DBA_PASSWORD: "dba"
+      VIRT_HTTPServer_ServerThreads: 200
+      VIRT_HTTPServer_MaxClientConnections: 500
+      VIRT_SPARQL_MaxQueryCostEstimationTime: 0
+      VIRT_SPARQL_ResultSetMaxRows: 0
+      VIRT_SPARQL_MaxQueryExecutionTime: 0
+      VIRT_Parameters_NumberOfBuffers: 1360000
+      VIRT_Parameters_MaxDirtyBuffers: 1000000
+      VIRT_Parameters_MaxQueryMem: 2G
+      VIRT_Parameters_MaxClientConnections: 500
+      VIRT_Parameters_IndexTreeMaps: 256
+      VIRT_Parameters_CheckpointInterval: 0
+      VIRT_Parameters_DefaultIsolation: 1
+      VIRT_Parameters_ThreadCleanupInterval: 1
+      VIRT_Parameters_ResourcesCleanupInterval: 1
+    volumes:
+      - "../data-dist/dataset:/usr/share/proj"
+    ports:
+      - 8891:8890
+      - 34220-34239:34200-34219

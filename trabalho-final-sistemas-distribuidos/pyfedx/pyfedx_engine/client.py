@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -22,6 +23,11 @@ class HttpSparqlClient:
     def __init__(self, timeout: float = 60.0):
         self.timeout = timeout
         self.http_requests = 0
+        self.bytes_received = 0
+        self.bytes_sent = 0
+        self.request_latencies: List[float] = []
+        self.requests_by_host: Dict[str, int] = {}
+        self.planning_seconds = 0.0
 
     def ask(self, endpoint: Endpoint, query: str) -> bool:
         self.http_requests += 1
@@ -49,9 +55,17 @@ class HttpSparqlClient:
         req = urllib.request.Request(url, data=encoded, method="POST")
         req.add_header("Accept", accept)
         req.add_header("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+        # Key by full endpoint URL (one per federation member): in T1/T2 all
+        # members share the same host, so host granularity would collapse.
+        self.requests_by_host[url] = self.requests_by_host.get(url, 0) + 1
+        self.bytes_sent += len(encoded)
+        started = time.monotonic()
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                return resp.read(), resp.headers.get("Content-Type", "")
+                data = resp.read()
+                self.request_latencies.append(time.monotonic() - started)
+                self.bytes_received += len(data)
+                return data, resp.headers.get("Content-Type", "")
         except urllib.error.HTTPError as exc:
             body = exc.read(4096).decode("utf-8", errors="replace")
             raise SparqlError(f"{url} returned HTTP {exc.code}: {body}") from exc

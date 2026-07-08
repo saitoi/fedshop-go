@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .client import HttpSparqlClient
@@ -238,7 +239,9 @@ def _execute_bgp(
 ) -> List[Dict[str, str]]:
     """Execute a flat list of triple patterns with source-based join."""
     result: List[Dict[str, str]] = []
+    plan_started = time.monotonic()
     ordered = order_triples(triples, source_map, planner)
+    client.planning_seconds += time.monotonic() - plan_started
     for triple in ordered:
         sources = source_map.get(triple, [])
         if not sources:

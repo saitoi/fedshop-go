@@ -35,6 +35,14 @@ type RunStats struct {
 	CacheHits              int       `json:"cache_hits"`
 	HTTPRequests           int       `json:"http_requests"`
 	DataTransfer           int64     `json:"data_transfer"`
+	RequestBytes           int64     `json:"request_bytes"`
+	NetReqCount            int       `json:"net_req_count"`
+	NetTotalSeconds        float64   `json:"net_total_seconds"`
+	NetMeanSeconds         float64   `json:"net_mean_seconds"`
+	NetP50Seconds          float64   `json:"net_p50_seconds"`
+	NetP95Seconds          float64   `json:"net_p95_seconds"`
+	EndpointsContacted     int       `json:"endpoints_contacted"`
+	EndpointLoadImbalance  float64   `json:"endpoint_load_imbalance"`
 	ParseSeconds           float64   `json:"parse_seconds"`
 	SourceSelectionSeconds float64   `json:"source_selection_seconds"`
 	PlanningSeconds        float64   `json:"planning_seconds"`

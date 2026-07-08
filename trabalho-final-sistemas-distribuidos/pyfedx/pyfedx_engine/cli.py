@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -16,6 +17,41 @@ from .parser import parse_endpoints, parse_query
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
+
+
+def _latency_summary(latencies: List[float]) -> Dict[str, float]:
+    """Summarize per-request network latencies into count/total/mean/p50/p95."""
+    if not latencies:
+        return {
+            "net_req_count": 0,
+            "net_total_seconds": 0.0,
+            "net_mean_seconds": 0.0,
+            "net_p50_seconds": 0.0,
+            "net_p95_seconds": 0.0,
+        }
+    ordered = sorted(latencies)
+
+    def pct(p: float) -> float:
+        idx = min(len(ordered) - 1, max(0, math.ceil(p * len(ordered)) - 1))
+        return ordered[idx]
+
+    total = sum(ordered)
+    return {
+        "net_req_count": len(ordered),
+        "net_total_seconds": total,
+        "net_mean_seconds": total / len(ordered),
+        "net_p50_seconds": pct(0.5),
+        "net_p95_seconds": pct(0.95),
+    }
+
+
+def _load_imbalance(requests_by_host: Dict[str, int]) -> float:
+    """Ratio max/mean of requests per endpoint host (1.0 = perfectly balanced)."""
+    if not requests_by_host:
+        return 0.0
+    counts = list(requests_by_host.values())
+    mean = sum(counts) / len(counts)
+    return max(counts) / mean if mean > 0 else 0.0
 
 
 def run_app(args: argparse.Namespace, client: Optional[HttpSparqlClient] = None) -> int:
@@ -40,6 +76,7 @@ def run_app(args: argparse.Namespace, client: Optional[HttpSparqlClient] = None)
         print(f"[pyfedx]   {triple.key()} → {src_ids or '(none)'}", flush=True)
 
     rows: List[Dict[str, str]] = []
+    exec_s = 0.0
     if not args.noexec:
         rows = execute(
             query,
@@ -64,6 +101,7 @@ def run_app(args: argparse.Namespace, client: Optional[HttpSparqlClient] = None)
     print(f"[pyfedx] stats    → {args.stats}", flush=True)
     print(f"[pyfedx] done in {total_s:.2f}s", flush=True)
 
+    planning_s = client.planning_seconds
     write_stats(
         args.stats,
         {
@@ -71,12 +109,19 @@ def run_app(args: argparse.Namespace, client: Optional[HttpSparqlClient] = None)
             "ask": ask_count,
             "http_requests": client.http_requests,
             "source_selection_seconds": ss_seconds,
+            "planning_seconds": planning_s,
+            "execution_seconds": max(0.0, exec_s - planning_s),
+            "data_transfer": client.bytes_received,
+            "request_bytes": client.bytes_sent,
+            "endpoints_contacted": len(client.requests_by_host),
+            "endpoint_load_imbalance": _load_imbalance(client.requests_by_host),
             "planner": args.planner,
             "join": args.join,
             "max_intermediate": args.max_intermediate,
             "total_seconds": total_s,
             "rows": len(rows),
             "noexec": args.noexec,
+            **_latency_summary(client.request_latencies),
         },
     )
     return 0

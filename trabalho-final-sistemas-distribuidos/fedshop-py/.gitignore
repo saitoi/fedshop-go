@@ -14,6 +14,10 @@ benchmark/*/
 *.duckdb
 *.txt.tmp
 
+# Distributed-topology benchmark: generated dataset, mapping, results
+data-dist/
+benchmark-dist/
+
 # Scratch / temp
 saved.txt
 err.log

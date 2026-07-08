@@ -1,0 +1,61 @@
+profile: dist
+use_docker: true
+
+# Distributed-systems benchmark config (topologies T1/T2/T3).
+# Uses a separate workdir/dataset (data-dist) so the existing data/ and
+# virtuoso-proxy-mapping-batch*.json files are never touched.
+
+scale:
+  batches: 10
+  members_per_batch: 10
+  product_count: 20000
+  product_scale_factor: 1
+  source_scale_factor: 1
+  feature_c: 9
+  type_c: 9
+  offer_n: 20
+  review_n: 100
+
+queries:
+  instances: 1
+  dir: inputs/queries
+
+inputs:
+  templates: inputs/templates
+  dataset: data-dist/dataset
+  workdir: data-dist
+
+services:
+  # Isolated from config_small.yaml's Virtuoso: different container, port,
+  # and volume, since batches 0-1 here share vendor0-19/ratingsite0-19 graph
+  # URIs with config_small's dataset (used by the webapp) — ingesting into
+  # the same Virtuoso instance would clobber those graphs.
+  virtuoso_port: 8891
+  virtuoso_service_name: dist-virtuoso
+  virtuoso_compose_file: docker/virtuoso-dist.yml
+  proxy_port: 5555
+
+evaluation:
+  attempts: 3
+  timeout: 120
+  engines:
+    pyfedx:
+      dir: ../pyfedx
+    fedshop-go:
+      dir: ../go-engine
+      selector: ask
+      join: bind
+      planner: source-count
+      max_concurrency: 4
+    rsa:
+      dir: ../../reference-repos/FedShop/engines/ARQ
+      fedup_dir: "${config_dir}/../../../../reference-repos/query-engines/fedup"
+      compose_file: "${config_dir}/../../docker/jena.yml"
+      service_name: jena-fuseki
+      endpoint: http://localhost:3030/FedShop/query
+      container_name: docker-jena-fuseki-1
+      virtuoso_host: localhost
+      # Distinct FedUP cache namespace: batch0/1 IDs collide with
+      # config_small.yaml's own RSA runs, which would otherwise reuse a
+      # stale summary built from different NQ data.
+      namespace: fedshop-dist

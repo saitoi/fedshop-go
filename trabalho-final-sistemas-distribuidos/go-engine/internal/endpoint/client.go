@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -27,6 +28,10 @@ type Client struct {
 	backoff    time.Duration
 	requests   atomic.Int64
 	bytes      atomic.Int64
+	bytesSent  atomic.Int64
+	netMu        sync.Mutex
+	latencies    []float64
+	hostRequests map[string]int
 	traceNow   func() float64
 	traceEmit  func(eventType string, t0 float64, fields map[string]any)
 }
@@ -85,6 +90,46 @@ func (c *Client) Requests() int64 { return c.requests.Load() }
 
 // Bytes returns response-body bytes read.
 func (c *Client) Bytes() int64 { return c.bytes.Load() }
+
+// BytesSent returns request-body bytes written.
+func (c *Client) BytesSent() int64 { return c.bytesSent.Load() }
+
+// NetLatencies returns a copy of per-request wall latencies in seconds.
+func (c *Client) NetLatencies() []float64 {
+	c.netMu.Lock()
+	defer c.netMu.Unlock()
+	out := make([]float64, len(c.latencies))
+	copy(out, c.latencies)
+	return out
+}
+
+// HostRequests returns a copy of the request count per endpoint host.
+func (c *Client) HostRequests() map[string]int {
+	c.netMu.Lock()
+	defer c.netMu.Unlock()
+	out := make(map[string]int, len(c.hostRequests))
+	for host, count := range c.hostRequests {
+		out[host] = count
+	}
+	return out
+}
+
+// recordAttempt counts requests per full endpoint URL (one per federation
+// member): in single-host topologies host granularity would collapse.
+func (c *Client) recordAttempt(endpointURL string) {
+	c.netMu.Lock()
+	if c.hostRequests == nil {
+		c.hostRequests = map[string]int{}
+	}
+	c.hostRequests[endpointURL]++
+	c.netMu.Unlock()
+}
+
+func (c *Client) recordLatency(seconds float64) {
+	c.netMu.Lock()
+	c.latencies = append(c.latencies, seconds)
+	c.netMu.Unlock()
+}
 
 // Ask implements federation.ASKClient.
 func (c *Client) Ask(ctx context.Context, endpoint federation.Endpoint, triple sparql.TriplePattern) (bool, error) {
@@ -215,6 +260,9 @@ func (c *Client) do(ctx context.Context, endpointURL, query string) ([]byte, err
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Accept", "application/sparql-results+json")
 		c.requests.Add(1)
+		c.bytesSent.Add(int64(len(form)))
+		c.recordAttempt(endpointURL)
+		attemptStarted := time.Now()
 		response, err := c.httpClient.Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -233,6 +281,7 @@ func (c *Client) do(ctx context.Context, endpointURL, query string) ([]byte, err
 			lastErr = fmt.Errorf("close SPARQL response: %w", closeErr)
 			continue
 		}
+		c.recordLatency(time.Since(attemptStarted).Seconds())
 		c.bytes.Add(int64(len(body)))
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
 			return body, nil

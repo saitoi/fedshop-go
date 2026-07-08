@@ -196,6 +196,11 @@ class RsaAdapter(EngineAdapter):
             engine_dir = Path(entry.dir)
         super().__init__(config, engine_dir)
         self.fedup_dir = Path(entry.extra.get("fedup_dir", ""))
+        # FedUP caches endpoint lists + TDB2 summaries under fedup_dir by
+        # namespace/batch. batch0/1 IDs collide with config_small.yaml's own
+        # RSA runs (same batch numbering) — a distinct namespace avoids
+        # silently reusing a stale summary built from different NQ data.
+        self.namespace = entry.extra.get("namespace", "fedshop")
         self.endpoint = entry.extra.get("endpoint", "http://localhost:3030/FedShop/query")
         self.compose_file = entry.extra.get("compose_file", "")
         self.service_name = entry.extra.get("service_name", "jena-fuseki")
@@ -204,6 +209,28 @@ class RsaAdapter(EngineAdapter):
         self._fedup_jar = str(self.fedup_dir / "target" / "fedup.jar")
         self._jena_bin = str(self.engine_dir / "jena" / "bin")
         self._java_bin = self._find_java(entry.extra.get("java_bin"))
+
+        # Remote-topology support: which host(s) serve the Virtuoso endpoints.
+        # Env vars override the config so run-topology-benchmark.sh can switch
+        # topologies without editing the YAML.
+        default_host = entry.extra.get("virtuoso_host", "localhost")
+        self.vendor_host = os.environ.get(
+            "FEDSHOP_VENDOR_HOST", entry.extra.get("vendor_host", default_host)
+        )
+        self.ratingsite_host = os.environ.get(
+            "FEDSHOP_RATINGSITE_HOST", entry.extra.get("ratingsite_host", default_host)
+        )
+
+    def _virtuoso_url_host(self, host: str) -> str:
+        """Host usable both by FedUP (host process) and arq for SERVICE calls.
+
+        Local hosts become host.docker.internal, which resolves to 127.0.0.1 on
+        the macOS host and to the host IP inside Docker containers; remote IPs
+        pass through unchanged.
+        """
+        if host in ("localhost", "127.0.0.1"):
+            return "host.docker.internal"
+        return host
 
     def prerequisites(self) -> None:
         if self.fedup_dir and self.fedup_dir.exists():
@@ -215,8 +242,8 @@ class RsaAdapter(EngineAdapter):
 
     def generate_config_file(self, batch_id: int, proxy_mapping: dict[str, str]) -> Path:
         fedup_dir = self.fedup_dir
-        federation_file = fedup_dir / f"config/fedshop/endpoints_batch{batch_id}.txt"
-        summary_dir = fedup_dir / f"summaries/fedshop/batch{batch_id}"
+        federation_file = fedup_dir / f"config/{self.namespace}/endpoints_batch{batch_id}.txt"
+        summary_dir = fedup_dir / f"summaries/{self.namespace}/batch{batch_id}"
 
         # Write endpoints file (one federation member IRI per line).
         federation_file.parent.mkdir(parents=True, exist_ok=True)
@@ -240,11 +267,18 @@ class RsaAdapter(EngineAdapter):
             if not nq_files:
                 raise RuntimeError(f"No NQ files found for batch {batch_id} members")
             tdbloader = str(Path(self._jena_bin) / "tdb2.tdbloader")
+            # tdb2.tdbloader.sh invokes whatever `java` is first on PATH; jena
+            # needs 11+, but the system default can be much older (e.g. 8),
+            # raising UnsupportedClassVersionError. Force the same Java build
+            # already resolved for arq/FedUP.
+            tdbloader_env = os.environ.copy()
+            tdbloader_env["JAVA"] = self._java_bin
+            tdbloader_env["PATH"] = str(Path(self._java_bin).parent) + ":" + tdbloader_env.get("PATH", "")
             with tempfile.TemporaryDirectory() as tmp:
                 tmp_path = Path(tmp)
                 transformed = _transform_nq_to_tmpdir(nq_files, tmp_path)
                 cmd = [tdbloader, "--loc", str(summary_dir)] + transformed
-                result = subprocess.run(cmd, capture_output=False, timeout=1200)
+                result = subprocess.run(cmd, capture_output=False, timeout=1200, env=tdbloader_env)
             if result.returncode != 0:
                 raise RuntimeError(f"tdb2.tdbloader failed for batch {batch_id}")
 
@@ -278,22 +312,30 @@ class RsaAdapter(EngineAdapter):
             proxy_client = ProxyClient(proxy_cfg.endpoint)
 
         virt = self.config.generation.virtuoso
-        virt_sparql = f"http://localhost:{virt.port}/sparql"
-        _wait_jena(virt_sparql)
+        for endpoint_host in {self.vendor_host, self.ratingsite_host}:
+            _wait_jena(f"http://{endpoint_host}:{virt.port}/sparql")
         proxy_client.reset()
 
         fedup_dir = self.fedup_dir
         summary_dir = fedup_dir / f"summaries/fedshop/batch{batch_id}"
 
         # Build --modify lambda: transforms TDB2 graph URIs to Virtuoso named-graph SPARQL URLs.
-        # host.docker.internal resolves to 127.0.0.1 on macOS host AND to the host IP inside
-        # Docker containers, so this URL works for both FedUP ASK queries (host side) and
-        # for Jena Fuseki SERVICE query execution (inside Docker).
-        virt = self.config.generation.virtuoso
-        virtuoso_base = f"http://host.docker.internal:{virt.port}/sparql?default-graph-uri="
         # TDB2 summary graphs use ModuloOnSuffix URIs (e.g. http://www.vendor0.fr, no slash).
         # Virtuoso named graphs have a trailing slash (http://www.vendor0.fr/), so add it back.
-        modify_lambda = f'(e) -> "{virtuoso_base}" + e + "/"'
+        virt = self.config.generation.virtuoso
+        vendor_url_host = self._virtuoso_url_host(self.vendor_host)
+        ratingsite_url_host = self._virtuoso_url_host(self.ratingsite_host)
+        vendor_base = f"http://{vendor_url_host}:{virt.port}/sparql?default-graph-uri="
+        if vendor_url_host == ratingsite_url_host:
+            modify_lambda = f'(e) -> "{vendor_base}" + e + "/"'
+        else:
+            # T3: vendor and ratingsite graphs live on different machines.
+            # NOTE: relies on FedUP's lambda parser accepting a ternary; if it
+            # rejects this, restrict RSA to topologies with a single endpoint host.
+            ratingsite_base = f"http://{ratingsite_url_host}:{virt.port}/sparql?default-graph-uri="
+            modify_lambda = (
+                f'(e) -> e.contains("vendor") ? "{vendor_base}" + e + "/" : "{ratingsite_base}" + e + "/"'
+            )
 
         failed_reason: str | None = None
         t_start = time.time()

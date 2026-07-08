@@ -18,6 +18,7 @@ from .planner import order_triples
 class FakeClient:
     def __init__(self):
         self.http_requests = 0
+        self.planning_seconds = 0.0
         self.ask_responses: Dict[Tuple[str, str], bool] = {}
         self.select_responses: Dict[Tuple[str, str], List[Dict[str, str]]] = {}
 

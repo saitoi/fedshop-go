@@ -281,11 +281,28 @@ def _expand_compact_config(raw: dict[str, Any], config_path: Path) -> dict[str, 
     watdiv_dir = _project_path(project_root, inputs.get("watdiv", "../../reference-repos/watdiv"))
 
     virtuoso_port = int(services.get("virtuoso_port", 8890))
+    virtuoso_service_name = str(services.get("virtuoso_service_name", "bsbm-virtuoso"))
+    virtuoso_compose_file = str(services.get("virtuoso_compose_file", "docker/virtuoso.yml"))
     proxy_host = str(services.get("proxy_host", "localhost"))
     proxy_port = int(services.get("proxy_port", 5555))
 
-    fedshop_go = engines.get("fedshop-go", {})
-    pyfedx = engines.get("pyfedx", {})
+    engine_defaults: dict[str, dict[str, Any]] = {
+        "fedshop-go": {
+            "dir": "../../go-engine",
+            "selector": "ask",
+            "join": "bind",
+            "planner": "source-count",
+            "max_concurrency": 4,
+        },
+        "pyfedx": {"dir": "../../scripts"},
+    }
+    expanded_engines: dict[str, dict[str, Any]] = {}
+    for name in dict.fromkeys([*engine_defaults, *engines]):
+        edata = {**engine_defaults.get(name, {}), **(engines.get(name) or {})}
+        edata["dir"] = _project_path(project_root, edata.get("dir", ""))
+        if "max_concurrency" in edata:
+            edata["max_concurrency"] = int(edata["max_concurrency"])
+        expanded_engines[name] = edata
 
     return {
         "use_docker": bool(raw.get("use_docker", True)),
@@ -300,8 +317,8 @@ def _expand_compact_config(raw: dict[str, Any], config_path: Path) -> dict[str, 
                 "exec": str(Path(watdiv_dir) / "bin" / "Release" / "watdiv"),
             },
             "virtuoso": {
-                "compose_file": _project_path(project_root, "docker/virtuoso.yml"),
-                "service_name": "bsbm-virtuoso",
+                "compose_file": _project_path(project_root, virtuoso_compose_file),
+                "service_name": virtuoso_service_name,
                 "isql": "/opt/virtuoso-opensource/bin/isql",
                 "data_dir": dataset_dir,
                 "port": virtuoso_port,
@@ -392,18 +409,7 @@ def _expand_compact_config(raw: dict[str, Any], config_path: Path) -> dict[str, 
                 "container_name": "docker-fedshop-proxy-1",
                 "targets": [],
             },
-            "engines": {
-                "fedshop-go": {
-                    "dir": _project_path(project_root, fedshop_go.get("dir", "../../go-engine")),
-                    "selector": fedshop_go.get("selector", "ask"),
-                    "join": fedshop_go.get("join", "bind"),
-                    "planner": fedshop_go.get("planner", "source-count"),
-                    "max_concurrency": int(fedshop_go.get("max_concurrency", 4)),
-                },
-                "pyfedx": {
-                    "dir": _project_path(project_root, pyfedx.get("dir", "../../scripts")),
-                },
-            },
+            "engines": expanded_engines,
         },
     }
 

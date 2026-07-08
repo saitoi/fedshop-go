@@ -4,7 +4,9 @@ package app
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/pedrosaito/fedshop-go/internal/artifact"
@@ -192,7 +194,60 @@ func RunQuery(ctx context.Context, options QueryOptions, protocol Protocol) (err
 		}
 	}
 	stats := artifact.RunStats{Engine: "fedshop-go", Rows: len(rows), Selector: options.Selector, Join: options.Join, Planner: options.Planner, ASK: selectionStats.ASKRequests, CacheHits: selectionStats.CacheHits, HTTPRequests: int(protocol.Requests()), DataTransfer: protocol.Bytes(), ParseSeconds: parseSeconds, SourceSelectionSeconds: selectionSeconds, PlanningSeconds: planningSeconds, ExecutionSeconds: executionSeconds, TotalSeconds: time.Since(started).Seconds(), Partial: executionStats.Partial, FailedEndpoints: executionStats.FailedEndpoints, TripleOrder: order}
+	fillNetworkStats(&stats, protocol)
 	return artifact.WriteRun(artifact.Paths{Results: options.OutResult, Sources: options.OutSources, Plan: options.OutPlan, Stats: options.OutStats}, query, rows, selection, stats)
+}
+
+// fillNetworkStats populates per-request network metrics when the protocol
+// exposes them (the real endpoint.Client does; test fakes need not).
+func fillNetworkStats(stats *artifact.RunStats, protocol Protocol) {
+	instrumented, ok := protocol.(interface {
+		NetLatencies() []float64
+		HostRequests() map[string]int
+		BytesSent() int64
+	})
+	if !ok {
+		return
+	}
+	stats.RequestBytes = instrumented.BytesSent()
+	latencies := instrumented.NetLatencies()
+	if len(latencies) > 0 {
+		sort.Float64s(latencies)
+		total := 0.0
+		for _, l := range latencies {
+			total += l
+		}
+		pct := func(p float64) float64 {
+			idx := int(math.Ceil(p*float64(len(latencies)))) - 1
+			if idx < 0 {
+				idx = 0
+			}
+			if idx >= len(latencies) {
+				idx = len(latencies) - 1
+			}
+			return latencies[idx]
+		}
+		stats.NetReqCount = len(latencies)
+		stats.NetTotalSeconds = total
+		stats.NetMeanSeconds = total / float64(len(latencies))
+		stats.NetP50Seconds = pct(0.5)
+		stats.NetP95Seconds = pct(0.95)
+	}
+	hosts := instrumented.HostRequests()
+	if len(hosts) > 0 {
+		stats.EndpointsContacted = len(hosts)
+		maxCount, sum := 0, 0
+		for _, count := range hosts {
+			sum += count
+			if count > maxCount {
+				maxCount = count
+			}
+		}
+		mean := float64(sum) / float64(len(hosts))
+		if mean > 0 {
+			stats.EndpointLoadImbalance = float64(maxCount) / mean
+		}
+	}
 }
 
 func validateQueryOptions(options QueryOptions) error {
